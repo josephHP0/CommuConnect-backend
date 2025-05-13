@@ -1,6 +1,8 @@
-from sqlmodel import SQLModel, Field
-from typing import Optional
+from sqlmodel import Relationship, SQLModel, Field
+from typing import Optional, TYPE_CHECKING
 from datetime import datetime
+if TYPE_CHECKING:
+    from app.models.administrador import Administrador  # solo lo usará el type checker
 
 class Usuario(SQLModel, table=True):
     id_usuario: Optional[int] = Field(default=None, primary_key=True)
@@ -13,3 +15,5 @@ class Usuario(SQLModel, table=True):
     fecha_modificacion: Optional[datetime] = None
     modificado_por: Optional[str] = Field(default=None, max_length=50)
     estado: Optional[bool] = True
+
+    administrador: Optional["Administrador"] = Relationship(back_populates="usuario")
