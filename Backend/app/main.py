@@ -8,8 +8,4 @@ app = FastAPI()
 def on_startup():
     init_db()
 
-@app.get("/")
-def root():
-    return {"message": "CommuConnect Backend OK"}
-
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
