@@ -5,6 +5,7 @@ from app.models.comunidad import Comunidad
 from app.schemas.comunidad import ComunidadCreate, ComunidadRead
 from typing import List, Optional
 from datetime import datetime
+from app.dependencies.administrador import get_current_admin
 
 router = APIRouter()
 '''
@@ -29,8 +30,8 @@ async def crear_comunidad(
     nombre: str = Form(...),
     slogan: Optional[str] = Form(None),
     imagen: Optional[UploadFile] = File(None),
-    creado_por: str = Form(...),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
+    current_admin=Depends(get_current_admin),
 ):
     imagen_bytes = await imagen.read() if imagen else None
 
@@ -38,8 +39,10 @@ async def crear_comunidad(
         nombre=nombre,
         slogan=slogan,
         imagen=imagen_bytes,
-        creado_por=creado_por,
-        fecha_creacion=datetime.utcnow(),
+        creado_por=current_admin.email,
+        fecha_creacion=datetime.utcnow(),        
+        modificado_por=current_admin.email,
+        fecha_modificacion=datetime.utcnow(),
         estado=True
     )
 

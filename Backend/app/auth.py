@@ -3,7 +3,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 import os
 
-SECRET_KEY = os.getenv("SECRET_KEY", "clave_secreta_123")
+SECRET_KEY = os.getenv("SECRET_KEY") or "clave_secreta_123"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
