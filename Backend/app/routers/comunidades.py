@@ -2,28 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
 from sqlmodel import Session, select
 from app.db import get_session
 from app.models.comunidad import Comunidad
-from app.schemas.comunidad import ComunidadCreate, ComunidadRead
+from app.schemas.comunidad import ComunidadCreate, ComunidadOut, ComunidadRead
 from typing import List, Optional
 from datetime import datetime
 from app.dependencies.administrador import get_current_admin
+import base64
 
 router = APIRouter()
-'''
-@router.post("/", response_model=ComunidadRead)
-def crear_comunidad(comunidad: ComunidadCreate, session: Session = Depends(get_session)):
-    nueva_comunidad = Comunidad(
-        nombre=comunidad.nombre,
-        slogan=comunidad.slogan,
-        imagen=comunidad.imagen,
-        creado_por=comunidad.creado_por,
-        fecha_creacion=datetime.utcnow(),
-        estado=True
-    )
-    session.add(nueva_comunidad)
-    session.commit()
-    session.refresh(nueva_comunidad)
-    return nueva_comunidad
-'''
 
 @router.post("/", response_model=ComunidadRead)
 async def crear_comunidad(
@@ -49,7 +34,13 @@ async def crear_comunidad(
     session.add(nueva_comunidad)
     session.commit()
     session.refresh(nueva_comunidad)
-    return nueva_comunidad
+    comunidad_dict = nueva_comunidad.__dict__.copy()
+
+    # Convertir imagen a base64 si existe
+    if comunidad_dict.get("imagen"):
+        comunidad_dict["imagen"] = base64.b64encode(comunidad_dict["imagen"]).decode("utf-8")
+
+    return ComunidadOut(**comunidad_dict)
 
 ### Con esto, Angular tendrá que enviar el formulario como FormData para poder cargar las imagenes
 

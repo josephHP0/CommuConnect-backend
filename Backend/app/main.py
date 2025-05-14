@@ -18,3 +18,27 @@ def on_startup():
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(comunidades.router, prefix="/api/comunidades", tags=["Comunidades"])
 app.include_router(administradores.router, prefix="/api/administradores", tags=["Administradores"])
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title="CommuConnect API",
+        version="1.0.0",
+        description="API de CommuConnect",
+        routes=app.routes,
+    )
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+        }
+    }
+    for path in openapi_schema["paths"]:
+        for method in openapi_schema["paths"][path]:
+            openapi_schema["paths"][path][method]["security"] = [{"BearerAuth": []}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
