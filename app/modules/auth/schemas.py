@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from app.core.enums import TipoUsuario
 
 class LoginRequest(BaseModel):
     email: str
@@ -15,3 +16,4 @@ class RegisterRequest(BaseModel):
     email: str
     password: str
     creado_por: str
+    tipo: TipoUsuario
