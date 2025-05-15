@@ -1,5 +1,6 @@
 from app.modules.auth.models import Usuario
 from app.core.db import engine
+from app.core.enums import TipoUsuario
 from passlib.context import CryptContext
 from sqlmodel import Session
 from datetime import datetime
@@ -9,7 +10,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
-def register_user(nombre: str, apellido: str, email: str, password: str, creado_por: str):
+def register_user(nombre: str, apellido: str, email: str, password: str, creado_por: str, tipo: TipoUsuario ):
     hashed_password = hash_password(password)
     
     new_user = Usuario(
@@ -17,6 +18,7 @@ def register_user(nombre: str, apellido: str, email: str, password: str, creado_
         apellido=apellido,
         email=email,
         password=hashed_password,
+        tipo=tipo,
         fecha_creacion=datetime.now(),
         creado_por=creado_por,
         estado=True
