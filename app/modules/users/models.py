@@ -1,6 +1,6 @@
 from sqlmodel import SQLModel, Field, Relationship
 from typing import Optional
-from app.models.usuario import Usuario
+from app.modules.auth.models import Usuario
 
 class Administrador(SQLModel, table=True):
     id_administrador: Optional[int] = Field(default=None, primary_key=True)

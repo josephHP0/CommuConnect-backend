@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.security import HTTPBearer
-from app.db import init_db
+from app.core.db import init_db
 from app.routers import auth, comunidades, administradores
 from app.models.usuario import Usuario
 from fastapi import FastAPI, Depends

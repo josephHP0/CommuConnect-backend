@@ -1,8 +1,8 @@
 from fastapi import Depends, HTTPException, status
 from sqlmodel import Session, select
-from app.models.administrador import Administrador
-from app.db import get_session
-from app.dependencies.auth import get_current_user
+from app.modules.users.models import Administrador
+from app.core.db import get_session
+from app.modules.auth.dependencies import get_current_user
 
 def get_current_admin(
     current_user=Depends(get_current_user),

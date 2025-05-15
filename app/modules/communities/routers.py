@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
 from sqlmodel import Session, select
-from app.db import get_session
-from app.models.comunidad import Comunidad
-from app.schemas.comunidad import ComunidadCreate, ComunidadOut, ComunidadRead
+from app.core.db import get_session
+from app.modules.communities.models import Comunidad
+from app.modules.communities.schemas import ComunidadCreate, ComunidadOut, ComunidadRead
 from typing import List, Optional
 from datetime import datetime
-from app.dependencies.administrador import get_current_admin
+from app.modules.users.dependencies import get_current_admin
 import base64
 
 router = APIRouter()

@@ -1,11 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from sqlmodel import Session, select
-from app.models.usuario import Usuario
-from app.schemas.usuario import LoginRequest, TokenResponse, RegisterRequest
-from app.auth import verify_password, create_access_token
-from app.db import engine  # o como tengas tu conexión
-from app.services.auth_service import register_user
-from app.auth import create_access_token
+from app.modules.auth.models import Usuario
+from app.modules.auth.schemas import LoginRequest, TokenResponse, RegisterRequest
+from app.core.security import verify_password, create_access_token
+from app.core.db import engine  # o como tengas tu conexión
+from app.modules.services import register_user
 
 router = APIRouter()
 
