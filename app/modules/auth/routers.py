@@ -15,12 +15,12 @@ def login(data: LoginRequest):
         if not user or not verify_password(data.password, user.password):
             raise HTTPException(status_code=401, detail="Credenciales inválidas")
         
-        token = create_access_token({"sub": str(user.id_usuario)})
-        return {"access_token": token}
+        token = create_access_token(str(user.id_usuario))
+        return {"access_token": token, "token_type": "bearer"}
     
 @router.post("/register", response_model=TokenResponse)
 def register(data: RegisterRequest):
     # Registrar al usuario y devolver un token
     user = register_user(data.nombre, data.apellido, data.email, data.password, data.creado_por, data.tipo)
-    token = create_access_token({"sub": str(user.id_usuario)})
+    token = create_access_token(str(user.id_usuario))
     return {"access_token": token, "token_type": "bearer"}
