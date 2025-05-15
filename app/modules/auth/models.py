@@ -1,5 +1,7 @@
 from sqlmodel import Relationship, SQLModel, Field
 from typing import Optional, TYPE_CHECKING
+from app.core.enums import TipoUsuario
+from sqlalchemy import Column, Enum as SQLEnum
 from datetime import datetime
 #if TYPE_CHECKING:
 #from app.models.administrador import Administrador  # solo lo usará el type checker
