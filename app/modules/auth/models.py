@@ -17,3 +17,18 @@ class Usuario(SQLModel, table=True):
     estado: Optional[bool] = True
 
     administrador: Optional["Administrador"] = Relationship(back_populates="usuario")
+
+class UsuarioRead(SQLModel):
+    """
+    Esquema de salida para mostrar usuarios (sin contraseña).
+    No se crea como tabla: no lleva `table=True`.
+    """
+    id_usuario: int
+    nombre: str
+    apellido: str
+    email: str
+    estado: Optional[bool]
+
+    class Config:
+        orm_mode = True        # permite .from_orm()
+        from_attributes = True 
