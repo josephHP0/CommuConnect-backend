@@ -19,18 +19,9 @@ def login(data: LoginRequest):
         token = create_access_token({"sub": str(user.id_usuario)})
         return {"access_token": token}
     
-<<<<<<< HEAD
 #@router.post("/register", response_model=TokenResponse)
 #def register(data: RegisterRequest):
  #   # Registrar al usuario y devolver un token
 #    user = register_user(data.nombre, data.apellido, data.email, data.password, data.creado_por)
    # token = create_access_token({"sub": str(user.id_usuario)})
    # return {"access_token": token, "token_type": "bearer"}
-=======
-@router.post("/register", response_model=TokenResponse)
-def register(data: RegisterRequest):
-    # Registrar al usuario y devolver un token
-    user = register_user(data.nombre, data.apellido, data.email, data.password, data.creado_por, data.tipo)
-    token = create_access_token({"sub": str(user.id_usuario)})
-    return {"access_token": token, "token_type": "bearer"}
->>>>>>> 6288c266fc5673c4253c777033bc60fb523d4226
