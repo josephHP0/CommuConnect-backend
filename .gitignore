@@ -1,2 +1,7 @@
+# Entornos virtuales y archivos de entorno
+.venv/
 .env
-.venv
+
+# Byte-code compilado
+__pycache__/
+*.py[cod]            # .pyc, .pyo, .pyd
