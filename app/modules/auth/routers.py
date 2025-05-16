@@ -1,6 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from sqlmodel import Session, select
+<<<<<<< Updated upstream
 from app.modules.auth.models import Usuario
+=======
+from app.modules.users.models import Usuario
+>>>>>>> Stashed changes
 from app.modules.auth.schemas import LoginRequest, TokenResponse, RegisterRequest
 from app.core.security import verify_password, create_access_token
 from app.core.db import engine  # o como tengas tu conexión

@@ -3,6 +3,7 @@ from typing import Optional, TYPE_CHECKING
 from app.core.enums import TipoUsuario
 from sqlalchemy import Column, Enum as SQLEnum
 from datetime import datetime
+<<<<<<< Updated upstream
 if TYPE_CHECKING:
     from app.modules.users import Administrador  # solo lo usará el type checker
 
@@ -35,3 +36,5 @@ class UsuarioRead(SQLModel):
     class Config:
         orm_mode = True        # permite .from_orm()
         from_attributes = True 
+=======
+>>>>>>> Stashed changes

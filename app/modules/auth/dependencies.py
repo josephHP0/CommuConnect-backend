@@ -4,8 +4,12 @@ from jose import JWTError
 from sqlmodel import Session, select
 
 from app.core.db import get_session
+<<<<<<< Updated upstream
+=======
+import os
+>>>>>>> Stashed changes
 from app.core.security import decode_access_token  # <— importa la función
-from app.modules.auth.models import Usuario
+from app.modules.users.models import Usuario 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
