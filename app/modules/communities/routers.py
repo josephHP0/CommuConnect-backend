@@ -7,10 +7,11 @@ from typing import List, Optional
 from datetime import datetime
 from app.modules.users.dependencies import get_current_admin
 import base64
+from app.core.logger import logger 
 
 router = APIRouter()
 
-@router.post("/", response_model=ComunidadRead)
+@router.post("/crear_comunidad", response_model=ComunidadRead)
 async def crear_comunidad(
     nombre: str = Form(...),
     slogan: Optional[str] = Form(None),
@@ -18,33 +19,44 @@ async def crear_comunidad(
     session: Session = Depends(get_session),
     current_admin=Depends(get_current_admin),
 ):
-    imagen_bytes = await imagen.read() if imagen else None
+    try:
+        imagen_bytes = await imagen.read() if imagen else None
 
-    nueva_comunidad = Comunidad(
-        nombre=nombre,
-        slogan=slogan,
-        imagen=imagen_bytes,
-        creado_por=current_admin.email,
-        fecha_creacion=datetime.utcnow(),        
-        modificado_por=current_admin.email,
-        fecha_modificacion=datetime.utcnow(),
-        estado=True
-    )
+        nueva_comunidad = Comunidad(
+            nombre=nombre,
+            slogan=slogan,
+            imagen=imagen_bytes,
+            creado_por=current_admin.email,
+            fecha_creacion=datetime.utcnow(),        
+            modificado_por=current_admin.email,
+            fecha_modificacion=datetime.utcnow(),
+            estado=True
+        )
 
-    session.add(nueva_comunidad)
-    session.commit()
-    session.refresh(nueva_comunidad)
-    comunidad_dict = nueva_comunidad.__dict__.copy()
+        session.add(nueva_comunidad)
+        session.commit()
+        session.refresh(nueva_comunidad)
 
-    # Convertir imagen a base64 si existe
-    if comunidad_dict.get("imagen"):
-        comunidad_dict["imagen"] = base64.b64encode(comunidad_dict["imagen"]).decode("utf-8")
+        logger.info(f"✅ Comunidad creada: '{nombre}' por {current_admin.email}")
 
-    return ComunidadOut(**comunidad_dict)
+        comunidad_dict = nueva_comunidad.__dict__.copy()
 
-### Con esto, Angular tendrá que enviar el formulario como FormData para poder cargar las imagenes
+        if comunidad_dict.get("imagen"):
+            comunidad_dict["imagen"] = base64.b64encode(comunidad_dict["imagen"]).decode("utf-8")
 
-@router.get("/", response_model=List[ComunidadRead])
+        return ComunidadOut(**comunidad_dict)
+
+    except Exception as e:
+        logger.error(f"❌ Error al crear comunidad '{nombre}' por {current_admin.email}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error al crear comunidad")
+
+@router.get("/listar_comunidad", response_model=List[ComunidadRead])
 def listar_comunidades(session: Session = Depends(get_session)):
-    comunidades = session.exec(select(Comunidad).where(Comunidad.estado == True)).all()
-    return comunidades
+    try:
+        comunidades = session.exec(select(Comunidad).where(Comunidad.estado == True)).all()
+        response = [ComunidadRead.from_orm_with_base64(c) for c in comunidades]
+        logger.info(f"📄 Se listaron {len(response)} comunidades activas")
+        return response
+    except Exception as e:
+        logger.error(f"❌ Error al listar comunidades: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error al obtener comunidades")
