@@ -1,41 +1,29 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, select
-from app.modules.users.models import Administrador
+from sqlmodel import Session
 from app.core.db import get_session
-from app.modules.users.models import Usuario
-from app.modules.users.schemas import UserCreate
-from app.modules.users.services import crear_cliente
+from app.modules.users.schemas import AdministradorCreate, AdministradorRead, ClienteCreate, ClienteRead, UsuarioCreate, UsuarioRead
+from app.modules.users.services import crear_administrador, crear_cliente, crear_usuario
 
 router = APIRouter()
 
-@router.post("/administradores")
-def crear_administrador(id_usuario: int, session: Session = Depends(get_session)):
-    usuario = session.get(Usuario, id_usuario)
-    if not usuario:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
-    admin_existente = session.exec(
-        select(Administrador).where(Administrador.id_usuario == id_usuario)
-    ).first()
-    if admin_existente:
-        raise HTTPException(status_code=400, detail="Ya es administrador")
-
-    nuevo_admin = Administrador(id_usuario=id_usuario)
-    session.add(nuevo_admin)
-    session.commit()
-    session.refresh(nuevo_admin)
-    return {"msg": "Administrador creado", "id_administrador": nuevo_admin.id_administrador}
-
-
-
-@router.post("/registrar-cliente")
-def registrar_cliente(
-    datos: UserCreate,
-    db: Session = Depends(get_session)
-):
+@router.post("/usuario", response_model=UsuarioRead)
+def registrar_usuario(usuario: UsuarioCreate, db: Session = Depends(get_session)):
     try:
-        return crear_cliente(db=db, datos=datos, creado_por="sistema")
-    except HTTPException as e:
-        raise e
+        return crear_usuario(db, usuario)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error al registrar usuario: {str(e)}")
+
+@router.post("/cliente", response_model=ClienteRead)
+def registrar_cliente(cliente: ClienteCreate, db: Session = Depends(get_session)):
+    try:
+        return crear_cliente(db, cliente)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al registrar cliente: {str(e)}")
+
+@router.post("/administrador", response_model=AdministradorRead)
+def registrar_administrador(administrador: AdministradorCreate, db: Session = Depends(get_session)):
+    try:
+        return crear_administrador(db, administrador)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al registrar administrador: {str(e)}")
+

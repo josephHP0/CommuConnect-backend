@@ -1,11 +1,13 @@
 from sqlmodel import Session, select
-from app.modules.users.models import Usuario, Cliente
-from app.modules.users.schemas import UserCreate
+from app.core.enums import TipoUsuario
+from app.modules.users.models import Administrador, Usuario, Cliente
+from app.modules.users.schemas import ClienteCreate, UsuarioBase, UsuarioCreate, AdministradorCreate
 from app.core.security import hash_password
 from fastapi import HTTPException, status
 from datetime import datetime
+from passlib.context import CryptContext
 
-
+'''
 def crear_cliente(db: Session, datos: UserCreate, creado_por: str = "sistema"):
     # Validación: Contraseñas coinciden
     if datos.password != datos.repetir_password:
@@ -57,4 +59,64 @@ def crear_cliente(db: Session, datos: UserCreate, creado_por: str = "sistema"):
         "id_usuario": nuevo_usuario.id_usuario,
         "id_cliente": nuevo_cliente.id_cliente
     }
+'''
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+def crear_usuario(db: Session, usuario: UsuarioCreate):
+    hashed_password = pwd_context.hash(usuario.password)
+    db_usuario = Usuario(
+        nombre=usuario.nombre,
+        apellido=usuario.apellido,
+        email=usuario.email,
+        password=hashed_password,
+        tipo=usuario.tipo,
+        creado_por="sistema"
+    )
+    db.add(db_usuario)
+    db.commit()
+    db.refresh(db_usuario)
+    return db_usuario
+
+def crear_cliente(db: Session, cliente: ClienteCreate):
+    usuario_data = UsuarioCreate(
+        nombre=cliente.nombre,
+        apellido=cliente.apellido,
+        email=cliente.email,
+        password=cliente.password,
+        tipo=TipoUsuario.Cliente
+    )
+    nuevo_usuario = crear_usuario(db, usuario_data)
+
+    db_cliente = Cliente(
+        id_usuario=nuevo_usuario.id_usuario,
+        tipo_documento=cliente.tipo_documento,
+        num_doc=cliente.num_doc,
+        numero_telefono=cliente.numero_telefono,
+        id_departamento=cliente.id_departamento,
+        id_distrito=cliente.id_distrito,
+        direccion=cliente.direccion,
+        fecha_nac=cliente.fecha_nac,
+        genero=cliente.genero,
+        talla=cliente.talla,
+        peso=cliente.peso
+    )
+    db.add(db_cliente)
+    db.commit()
+    db.refresh(db_cliente)
+    return db_cliente
+
+def crear_administrador(db: Session, administrador: AdministradorCreate):
+    usuario_data = UsuarioCreate(
+        nombre=administrador.nombre,
+        apellido=administrador.apellido,
+        email=administrador.email,
+        password=administrador.password,
+        tipo=TipoUsuario.Administrador
+    )
+    nuevo_usuario = crear_usuario(db, usuario_data)
+
+    db_admin = Administrador(id_usuario=nuevo_usuario.id_usuario)
+    db.add(db_admin)
+    db.commit()
+    db.refresh(db_admin)
+    return db_admin

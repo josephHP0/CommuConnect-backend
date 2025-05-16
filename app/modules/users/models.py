@@ -2,8 +2,6 @@ from sqlmodel import SQLModel, Field, Relationship
 from typing import Optional
 from datetime import datetime, date
 
-
-
 class Usuario(SQLModel, table=True):
     __tablename__ = "usuario"
     id_usuario: Optional[int] = Field(default=None, primary_key=True)
@@ -26,9 +24,6 @@ class Administrador(SQLModel, table=True):
     id_usuario: int = Field(foreign_key="usuario.id_usuario")
 
     usuario: Optional[Usuario] = Relationship(back_populates="administrador")
-
-
-
 
 class Cliente(SQLModel, table=True):
     id_cliente: Optional[int] = Field(default=None, primary_key=True)

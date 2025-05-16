@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from sqlmodel import Session, select
 from app.core.db import get_session
-#from app.modules.auth.models import Usuario
+from app.modules.users.models import Usuario
 import os
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
