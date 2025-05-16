@@ -17,10 +17,3 @@ def login(data: LoginRequest):
         
         token = create_access_token(str(user.id_usuario))
         return {"access_token": token}
-    
-#@router.post("/register", response_model=TokenResponse)
-#def register(data: RegisterRequest):
- #   # Registrar al usuario y devolver un token
-#    user = register_user(data.nombre, data.apellido, data.email, data.password, data.creado_por)
-   # token = create_access_token({"sub": str(user.id_usuario)})
-   # return {"access_token": token, "token_type": "bearer"}
