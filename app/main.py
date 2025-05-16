@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.security import HTTPBearer
 from fastapi.openapi.utils import get_openapi
-
 from app.core.db import init_db
 from app.modules.auth.routers import router as auth_router
 from app.modules.communities.routers import router as comunidades_router

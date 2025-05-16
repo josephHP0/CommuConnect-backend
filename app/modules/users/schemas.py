@@ -25,6 +25,8 @@ class UsuarioBase(BaseModel):
     apellido: str
     email: EmailStr
     tipo: Optional[str] = "CLIENTE"
+    class Config:
+        from_attributes = True
 
 class UsuarioCreate(UsuarioBase):
     password: str
