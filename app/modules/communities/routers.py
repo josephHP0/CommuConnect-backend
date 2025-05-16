@@ -54,8 +54,9 @@ async def crear_comunidad(
 def listar_comunidades(session: Session = Depends(get_session)):
     try:
         comunidades = session.exec(select(Comunidad).where(Comunidad.estado == True)).all()
-        logger.info(f"📄 Se listaron {len(comunidades)} comunidades activas")
-        return comunidades
+        response = [ComunidadRead.from_orm_with_base64(c) for c in comunidades]
+        logger.info(f"📄 Se listaron {len(response)} comunidades activas")
+        return response
     except Exception as e:
         logger.error(f"❌ Error al listar comunidades: {str(e)}")
         raise HTTPException(status_code=500, detail="Error al obtener comunidades")
