@@ -15,7 +15,7 @@ def login(data: LoginRequest):
         if not user or not verify_password(data.password, user.password):
             raise HTTPException(status_code=401, detail="Credenciales inválidas")
         
-        token = create_access_token({"sub": str(user.id_usuario)})
+        token = create_access_token(str(user.id_usuario))
         return {"access_token": token}
     
 #@router.post("/register", response_model=TokenResponse)

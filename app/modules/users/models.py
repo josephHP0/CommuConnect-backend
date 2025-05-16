@@ -2,6 +2,8 @@ from sqlmodel import SQLModel, Field, Relationship
 from typing import Optional
 from datetime import datetime, date
 
+from app.core.enums import TipoDocumento, TipoUsuario
+
 class Usuario(SQLModel, table=True):
     __tablename__ = "usuario"
     id_usuario: Optional[int] = Field(default=None, primary_key=True)
@@ -9,7 +11,7 @@ class Usuario(SQLModel, table=True):
     apellido: str = Field(max_length=60)
     email: str = Field(max_length=60, unique=True)
     password: str = Field(max_length=60)
-    tipo: Optional[str] = Field(default="CLIENTE", max_length=20)
+    tipo: Optional[TipoUsuario] = Field(default=TipoUsuario.Cliente, max_length=20)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
     creado_por: Optional[str] = Field(default=None, max_length=50)
     fecha_modificacion: Optional[datetime] = None
@@ -29,7 +31,7 @@ class Cliente(SQLModel, table=True):
     id_cliente: Optional[int] = Field(default=None, primary_key=True)
     id_usuario: int = Field(foreign_key="usuario.id_usuario")
 
-    tipo_documento: str = Field(max_length=20)
+    tipo_documento: TipoDocumento = Field(max_length=20)
     num_doc: str = Field(max_length=45, unique=True)
     numero_telefono: str = Field(max_length=45)
     id_departamento: int

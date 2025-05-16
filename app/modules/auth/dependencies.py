@@ -7,8 +7,7 @@ from app.modules.users.models import Usuario
 import os
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-
-SECRET_KEY = os.getenv("SECRET_KEY") or "CLAVE_SUPER_SECRETA"
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 
 def get_current_user(
