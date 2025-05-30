@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.db import get_session
+from app.modules.auth.dependencies import get_current_cliente_id
+from app.modules.communities.services import unir_cliente_a_comunidad
 from app.modules.users.schemas import AdministradorCreate, AdministradorRead, ClienteCreate, ClienteRead, UsuarioCreate, UsuarioRead,UsuarioBase
 from app.modules.users.services import crear_administrador, crear_cliente, crear_usuario
 from app.modules.users.dependencies import get_current_admin
@@ -59,3 +61,12 @@ def listar_clientes(
         select(Usuario).where(Usuario.tipo == TipoUsuario.Cliente)
     ).all()
     return clientes
+
+#Endpoint para regisrar a un cliente a una comunidad
+@router.post("/unir_cliente_comunidad")
+def unir_cliente_comunidad(
+    id_comunidad: int,
+    session: Session = Depends(get_session),
+    id_cliente: int = Depends(get_current_cliente_id)
+):
+    return unir_cliente_a_comunidad(session, id_cliente, id_comunidad)

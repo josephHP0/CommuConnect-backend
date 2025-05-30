@@ -5,25 +5,24 @@ from app.core.db import init_db
 from app.modules.auth.routers import router as auth_router
 from app.modules.communities.routers import router as comunidades_router
 from app.modules.users.routers import router as usuarios_router
+from app.modules.billing.routers import router as billing_router
 
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(
-    title="CommuConnect API",
-    version="1.0.0",
-    description="API de CommuConnect"
-)
 
-# Permitir solicitudes desde tu frontend
+app = FastAPI(debug=True)
+
+origins = [
+    "http://commuconnect-frontend-v1.s3-website-us-east-1.amazonaws.com"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200"],  # o ["*"] para todos los orígenes
+    allow_origins=origins,  # O usa ["*"] temporalmente para probar
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
 
 
 security = HTTPBearer()
@@ -35,6 +34,7 @@ def on_startup():
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(comunidades_router, prefix="/api/comunidades", tags=["Comunidades"])
 app.include_router(usuarios_router,  prefix="/api/usuarios", tags=["Usuarios"])
+app.include_router(billing_router, prefix="/api/billing", tags=["Billing"])
 
 
 def custom_openapi():
