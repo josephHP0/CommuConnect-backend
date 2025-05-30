@@ -1,14 +1,15 @@
+import traceback
 from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
 from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.communities.models import Comunidad
-from app.modules.communities.schemas import ComunidadCreate, ComunidadOut, ComunidadRead
+from app.modules.communities.schemas import ComunidadOut, ComunidadRead
 from typing import List, Optional
 from datetime import datetime
 from app.modules.users.dependencies import get_current_admin
 import base64
 from app.core.logger import logger 
-from app.modules.communities.services import eliminar_comunidad_service
+from app.modules.communities.services import eliminar_comunidad_service, get_comunidades_con_servicios, get_comunidades_con_servicios_sin_imagen
 from app.modules.communities.services import editar_comunidad_service
 
 router = APIRouter()
@@ -52,6 +53,7 @@ async def crear_comunidad(
         logger.error(f"❌ Error al crear comunidad '{nombre}' por {current_admin.email}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error al crear comunidad")
 
+#Endpoint para listar comunidades activas
 @router.get("/listar_comunidad", response_model=List[ComunidadRead])
 def listar_comunidades(session: Session = Depends(get_session)):
     try:
@@ -105,3 +107,13 @@ async def editar_comunidad(
         traceback.print_exc()
         logger.error(f"❌ Error al editar comunidad ID {id_comunidad}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error al editar comunidad")
+
+#Endpoint para llamar a las comunidades con sus servicios asociados  
+@router.get("/comunidades-con-servicios")
+def comunidades_con_servicios(session: Session = Depends(get_session)):
+    return get_comunidades_con_servicios(session)
+
+#Endpoint para llamar a las comunidades con sus servicios asociados, pero sin imagen
+@router.get("/comunidades-con-servicios_sinImagen")
+def comunidades_con_servicios_sinImagen(session: Session = Depends(get_session)):
+    return get_comunidades_con_servicios_sin_imagen(session)

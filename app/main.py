@@ -5,6 +5,7 @@ from app.core.db import init_db
 from app.modules.auth.routers import router as auth_router
 from app.modules.communities.routers import router as comunidades_router
 from app.modules.users.routers import router as usuarios_router
+from app.modules.billing.routers import router as billing_router
 
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -33,6 +34,7 @@ def on_startup():
 app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 app.include_router(comunidades_router, prefix="/api/comunidades", tags=["Comunidades"])
 app.include_router(usuarios_router,  prefix="/api/usuarios", tags=["Usuarios"])
+app.include_router(billing_router, prefix="/api/billing", tags=["Billing"])
 
 
 def custom_openapi():
