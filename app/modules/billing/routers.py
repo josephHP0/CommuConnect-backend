@@ -8,10 +8,12 @@ from typing import List, Optional
 
 router = APIRouter()
 
+#Lista los 4 planes disponibles
 @router.get("/planes", response_model=List[PlanOut])
 def listar_planes(session: Session = Depends(get_session)):
     return get_planes(session)
 
+#Endpoint para la pantalla "Elige tu plan", genera una orden de pago
 @router.post("/planes/{id_plan}/seleccionar")
 def seleccionar_plan(
     id_plan: int,
@@ -20,6 +22,9 @@ def seleccionar_plan(
 ):
     return crear_pago_pendiente(session, id_plan, current_user.email)
 
+
+#Endpoint para registrar una inscripcion, necesita el id de la comunidad y opcionalmente el id del plan y del pago
+#Se da a la vez de seleccionar plan ya sea con un plan elegido o con el boton de omitir
 @router.post("/inscripcion")
 def registrar_inscripcion(
     id_comunidad: int,
@@ -38,6 +43,7 @@ def registrar_inscripcion(
         current_user.email
     )
 
+#Endpoint para la pasaerla de pago, necesita la comunidad relacionada al pago
 @router.post("/comunidades/{id_comunidad}/pagar")
 def pagar_comunidad(
     id_comunidad: int,
