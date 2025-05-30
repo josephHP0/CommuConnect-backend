@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60))
+CONFIRM_TOKEN_EXPIRE_HOURS  = int(os.getenv("CONFIRM_TOKEN_EXPIRE_HOURS", 24))
 
 # Contexto bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -48,3 +49,24 @@ def decode_access_token(token: str) -> Dict[str, Any]:
         return payload
     except JWTError as e:
         raise
+
+
+def create_confirmation_token(email: str) -> str:
+    """
+    JWT corto cuyo subject es el email del usuario.
+    Se usa en el enlace /confirmar/<token>
+    """
+    now    = datetime.utcnow()
+    expire = now + timedelta(hours=CONFIRM_TOKEN_EXPIRE_HOURS)
+    payload = {"sub": email, "iat": now, "exp": expire}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_confirmation_token(token: str) -> Optional[str]:
+    """
+    Devuelve el email si el token es válido, si no → None.
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload.get("sub")
+    except JWTError:
+        return None

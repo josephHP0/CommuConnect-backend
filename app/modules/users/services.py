@@ -2,10 +2,12 @@ from sqlmodel import Session, select
 from app.core.enums import TipoUsuario
 from app.modules.users.models import Administrador, Usuario, Cliente
 from app.modules.users.schemas import ClienteCreate, UsuarioBase, UsuarioCreate, AdministradorCreate
-from app.core.security import hash_password
-from fastapi import HTTPException, status
+from app.core.security import hash_password,create_confirmation_token
+from utils.email_brevo import send_confirmation_email
+from fastapi import HTTPException, status, BackgroundTasks
 from datetime import datetime
 from passlib.context import CryptContext
+
 
 '''
 def crear_cliente(db: Session, datos: UserCreate, creado_por: str = "sistema"):
@@ -70,14 +72,15 @@ def crear_usuario(db: Session, usuario: UsuarioCreate):
         email=usuario.email,
         password=hashed_password,
         tipo=usuario.tipo,
-        creado_por="sistema"
+        creado_por="sistema",
+        estado=False
     )
     db.add(db_usuario)
     db.commit()
     db.refresh(db_usuario)
     return db_usuario
 
-def crear_cliente(db: Session, cliente: ClienteCreate):
+def crear_cliente(db: Session, cliente: ClienteCreate, bg: BackgroundTasks):
     usuario_data = UsuarioCreate(
         nombre=cliente.nombre,
         apellido=cliente.apellido,
@@ -98,12 +101,30 @@ def crear_cliente(db: Session, cliente: ClienteCreate):
         fecha_nac=cliente.fecha_nac,
         genero=cliente.genero,
         talla=cliente.talla,
-        peso=cliente.peso
+        peso=cliente.peso,
     )
     db.add(db_cliente)
     db.commit()
     db.refresh(db_cliente)
+    token = create_confirmation_token(nuevo_usuario.email)
+    bg.add_task(send_confirmation_email, nuevo_usuario.email, token)
     return db_cliente
+
+
+def reenviar_confirmacion(db: Session, email: str, bg: BackgroundTasks):
+    usuario: Usuario | None = db.exec(
+        select(Usuario).where(Usuario.email == email)
+    ).first()
+
+    if not usuario:
+        raise HTTPException(404, "Usuario no encontrado")
+
+    if usuario.estado:
+        raise HTTPException(400, "La cuenta ya está confirmada")
+
+    token = create_confirmation_token(usuario.email)
+    bg.add_task(send_confirmation_email, usuario.email, token)
+    return {"msg": "Se envió un nuevo enlace de confirmación"}
 
 def crear_administrador(db: Session, administrador: AdministradorCreate):
     usuario_data = UsuarioCreate(
