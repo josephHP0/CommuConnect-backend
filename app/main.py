@@ -9,7 +9,7 @@ from app.modules.users.routers import router as usuarios_router
 from fastapi.middleware.cors import CORSMiddleware
 
 
-app = FastAPI()
+app = FastAPI(debug=True)
 
 origins = [
     "http://commuconnect-frontend-v1.s3-website-us-east-1.amazonaws.com"
