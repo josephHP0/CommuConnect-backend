@@ -14,23 +14,38 @@ def get_current_user(
     token: str = Depends(oauth2_scheme),
     session: Session = Depends(get_session)
 ):
+    print(f"\n[TOKEN RECIBIDO]: {token}")
+    print("\n Entrando a get_current_user")
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="No se pudo validar el token",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]) # type: ignore
-        user_id: int = payload.get("sub") # type: ignore
+        print(f"Token recibido: {token}")
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        print(" Token decodificado correctamente")
+        user_id: int = payload.get("sub")
+        print(f" ID extraído del token: {user_id}")
         if user_id is None:
+            print(" 'sub' no presente en el token")
             raise credentials_exception
-    except JWTError:
+    except JWTError as e:
+        print(f"Error al decodificar el token: {e}")
         raise credentials_exception
 
-    user = session.exec(select(Usuario).where(Usuario.id_usuario == user_id)).first()
-    if user is None:
+    try:
+        user = session.exec(select(Usuario).where(Usuario.id_usuario == user_id)).first()
+        if user is None:
+            print(f" Usuario con ID {user_id} no existe en la base de datos")
+            raise credentials_exception
+        print(f"👤 Usuario autenticado: {user.email} (ID: {user.id_usuario})")
+        return user
+    except Exception as e:
+        print(f"Error en consulta de usuario: {e}")
         raise credentials_exception
-    return user
+
 
 def get_current_cliente_id(
     current_user: Usuario = Depends(get_current_user),
