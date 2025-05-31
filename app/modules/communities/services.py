@@ -7,6 +7,7 @@ import base64
 from typing import Optional
 
 from app.modules.services.models import ComunidadXServicio, Servicio
+from app.modules.services.services import obtener_servicios_por_ids
 
 logger = logging.getLogger(__name__)
 
@@ -139,3 +140,12 @@ def unir_cliente_a_comunidad(session: Session, id_cliente: int, id_comunidad: in
     session.add(relacion)
     session.commit()
     return {"detail": "Cliente unido a la comunidad exitosamente."}
+
+def obtener_servicios_de_comunidad(session: Session, id_comunidad: int):
+    servicio_ids = session.exec(
+        select(ComunidadXServicio.id_servicio).where(
+            ComunidadXServicio.id_comunidad == id_comunidad
+        )
+    ).all()
+
+    return obtener_servicios_por_ids(session, servicio_ids)

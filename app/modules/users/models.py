@@ -43,3 +43,6 @@ class Cliente(SQLModel, table=True):
     peso: int
 
     usuario: Optional[Usuario] = Relationship(back_populates="cliente")
+
+
+
