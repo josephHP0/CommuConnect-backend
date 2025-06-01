@@ -6,7 +6,7 @@ class TipoUsuario(str, Enum):
 
 class TipoDocumento(str, Enum):
     DNI = "DNI"
-    CarnetDeExtranjeria = "CARNET DE EXTRANJERIA"
+    CE = "CE"
 
 class ModalidadServicio(str, Enum):
     Virtual = "Virtual"

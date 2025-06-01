@@ -75,7 +75,7 @@ def crear_usuario(db: Session, usuario: UsuarioCreate):
         apellido=usuario.apellido,
         email=usuario.email,
         password=hashed_password,
-        tipo=usuario.tipo,
+        tipo=usuario.tipo, # type: ignore
         creado_por="sistema",
         estado=False
     )
@@ -95,7 +95,7 @@ def crear_cliente(db: Session, cliente: ClienteCreate, bg: BackgroundTasks):
     nuevo_usuario = crear_usuario(db, usuario_data)
 
     db_cliente = Cliente(
-        id_usuario=nuevo_usuario.id_usuario,
+        id_usuario=nuevo_usuario.id_usuario, # type: ignore
         tipo_documento=cliente.tipo_documento,
         num_doc=cliente.num_doc,
         numero_telefono=cliente.numero_telefono,
@@ -140,7 +140,7 @@ def crear_administrador(db: Session, administrador: AdministradorCreate):
     )
     nuevo_usuario = crear_usuario(db, usuario_data)
 
-    db_admin = Administrador(id_usuario=nuevo_usuario.id_usuario)
+    db_admin = Administrador(id_usuario=nuevo_usuario.id_usuario) # type: ignore
     db.add(db_admin)
     db.commit()
     db.refresh(db_admin)
@@ -188,7 +188,7 @@ def obtener_comunidades_del_cliente(session: Session, id_cliente: int) -> List[C
     try:
         comunidades = session.exec(
             select(Comunidad).where(
-                Comunidad.id_comunidad.in_(comunidad_ids),
+                Comunidad.id_comunidad.in_(comunidad_ids), # type: ignore
                 Comunidad.estado == True
             )
         ).all()
@@ -197,7 +197,7 @@ def obtener_comunidades_del_cliente(session: Session, id_cliente: int) -> List[C
         print(f"Error al obtener detalles de comunidades: {e}")
         raise HTTPException(status_code=500, detail=f"[comunidades] Error al obtener comunidades activas: {str(e)}")
 
-    return comunidades
+    return comunidades # type: ignore
 
 
 
@@ -208,7 +208,7 @@ def construir_respuesta_contexto(session: Session, comunidades: List[Comunidad])
         print(f"Procesando comunidad ID {comunidad.id_comunidad}: {comunidad.nombre}")
 
         try:
-            servicios = obtener_servicios_de_comunidad(session, comunidad.id_comunidad)
+            servicios = obtener_servicios_de_comunidad(session, comunidad.id_comunidad) # type: ignore
             print(f"Servicios obtenidos para '{comunidad.nombre}': {[s.nombre for s in servicios]}")
 
             servicios_resumen = [ServicioResumen(nombre=s.nombre) for s in servicios]
