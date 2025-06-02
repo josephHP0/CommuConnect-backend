@@ -100,20 +100,6 @@ def obtener_horas_presenciales(
     horas_str.sort()
     return horas_str
 
-from datetime import date
-from typing import List
-
-from sqlmodel import Session, select
-from sqlalchemy import func
-
-from app.modules.reservations.models import (
-    Sesion,
-    SesionPresencial,
-    Reserva
-)
-from app.modules.services.models import Local
-
-
 def listar_sesiones_presenciales_detalladas(
     session: Session,
     id_servicio: int,
