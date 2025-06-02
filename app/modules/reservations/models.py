@@ -1,22 +1,9 @@
 from sqlmodel import SQLModel, Field, Relationship
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
-
-class Profesional(SQLModel, table=True):
-    __tablename__ = "profesional"
-    id_profesional: Optional[int] = Field(default=None, primary_key=True)
-    id_usuario: int
-    formulario: Optional[str] = None
-    fecha_creacion: Optional[datetime] = None
-    creado_por: Optional[str] = None
-    fecha_modificacion: Optional[datetime] = None
-    modificado_por: Optional[str] = None
-    estado: Optional[bool] = True
-
-    sesiones_virtuales: List["SesionVirtual"] = Relationship(back_populates="profesional")
-
-
-
+if TYPE_CHECKING:
+    from app.modules.reservations.models import SesionVirtual
+    from app.modules.services.models import Profesional, Local
 class Sesion(SQLModel, table=True):
     __tablename__ = "sesion"
     id_sesion: Optional[int] = Field(default=None, primary_key=True)
@@ -34,6 +21,7 @@ class Sesion(SQLModel, table=True):
     estado: Optional[bool] = Field(default=True)
 
     sesiones_virtuales: List["SesionVirtual"] = Relationship(back_populates="sesion")
+    sesiones_presenciales: List["SesionPresencial"] = Relationship( back_populates="sesion",sa_relationship_kwargs={"lazy": "selectin"})
 
 class SesionVirtual(SQLModel, table=True):
     __tablename__ = "sesion_virtual"
@@ -55,3 +43,21 @@ class SesionVirtual(SQLModel, table=True):
     # Relaciones (si tienes modelos para Sesion y Profesional)
     sesion: Optional["Sesion"] = Relationship(back_populates="sesiones_virtuales")
     profesional: Optional["Profesional"] = Relationship(back_populates="sesiones_virtuales")
+
+class SesionPresencial(SQLModel, table=True):
+    __tablename__ = "sesion_presencial"
+
+    id_sesion_presencial: Optional[int] = Field(default=None, primary_key=True)
+    id_sesion: Optional[int] = Field(foreign_key="sesion.id_sesion")
+    id_local: Optional[int] = Field(foreign_key="local.id_local")
+    capacidad: Optional[int] = None
+
+    fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    creado_por: Optional[str] = Field(default=None, max_length=50)
+    fecha_modificacion: Optional[datetime] = None
+    modificado_por: Optional[str] = Field(default=None, max_length=50)
+    estado: Optional[bool] = Field(default=True)
+
+    # Relaciones inversas
+    sesion: Optional["Sesion"] = Relationship(back_populates="sesiones_presenciales")
+    local: Optional["Local"] = Relationship(back_populates="sesiones_presenciales")
