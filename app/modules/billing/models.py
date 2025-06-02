@@ -1,10 +1,14 @@
-from sqlalchemy import Enum as SAEnum
-from sqlmodel import SQLModel, Field
-from typing import Optional
+from __future__ import annotations
+from sqlalchemy import Enum as SAEnum, DECIMAL, Column
+from sqlmodel import SQLModel, Field, Relationship
+from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
-from sqlalchemy import DECIMAL, Column
-
 from app.core.enums import MetodoPago
+
+if TYPE_CHECKING:
+    # Para tipado de la relación many-to-many
+    from app.modules.communities.models import ComunidadXPlan
+
 
 class Plan(SQLModel, table=True):
     id_plan: Optional[int] = Field(default=None, primary_key=True)
@@ -17,6 +21,8 @@ class Plan(SQLModel, table=True):
     fecha_modificacion: Optional[datetime] = None
     modificado_por: Optional[str] = Field(default=None, max_length=50)
     estado: int
+
+    comunidades: List["ComunidadXPlan"] = Relationship(back_populates="plan",sa_relationship_kwargs={"lazy": "selectin"})
 
 class Pago(SQLModel, table=True):
     id_pago: Optional[int] = Field(default=None, primary_key=True)
