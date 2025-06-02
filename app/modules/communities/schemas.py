@@ -2,7 +2,8 @@ import base64
 from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
-
+from app.modules.services.schemas import ServicioResumen
+from typing import List, Optional
 
 
 class ComunidadCreate(BaseModel):
@@ -44,4 +45,21 @@ class ComunidadOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ComunidadContexto(BaseModel):
+    id_comunidad: int
+    nombre: str
+    slogan: Optional[str] = None
+    imagen: Optional[str] = None  # Codificada en base64 para frontend
+    servicios: Optional[List[ServicioResumen]] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_orm_with_base64(cls, comunidad, servicios=None):
+        data = comunidad.__dict__.copy()
+        if comunidad.imagen:
+            data["imagen"] = base64.b64encode(comunidad.imagen).decode("utf-8")
+        if servicios is not None:
+            data["servicios"] = servicios
+        return cls(**data)
     

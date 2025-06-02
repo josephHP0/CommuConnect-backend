@@ -12,7 +12,7 @@ class ComunidadXServicio(SQLModel, table=True):
 class Servicio(SQLModel, table=True):
     id_servicio: Optional[int] = Field(default=None, primary_key=True)
     nombre: str = Field(max_length=100)
-    descripccion: Optional[str] = Field(default=None, max_length=100)
+    descripcion: Optional[str] = Field(default=None, max_length=100)
     imagen: Optional[bytes] = None
     modalidad: str = Field(max_length=10)  # Enum: 'Virtual' o 'Presencial'
     fecha_creacion: datetime

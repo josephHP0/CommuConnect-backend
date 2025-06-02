@@ -11,6 +11,9 @@ from typing import List
 from app.modules.users.models import Usuario
 from app.core.enums import TipoUsuario
 from app.core.security import verify_confirmation_token
+from app.modules.communities.schemas import ComunidadContexto
+from app.modules.auth.dependencies import get_current_user
+from app.modules.users.services import obtener_cliente_desde_usuario, obtener_comunidades_del_cliente, construir_respuesta_contexto
 
 router = APIRouter()
 
@@ -100,4 +103,67 @@ def unir_cliente_comunidad(
 ):
     return unir_cliente_a_comunidad(session, id_cliente, id_comunidad)
 
+
+
+@router.get("/api/usuarios/usuario/comunidades", response_model=List[ComunidadContexto])
+def listar_comunidades_usuario(
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    print(f"\n[INICIO] Usuario autenticado: {current_user.email} (ID: {current_user.id_usuario})")
+
+    try:
+        # Paso 1: obtener cliente vinculado al usuario
+        try:
+            print(" Buscando cliente vinculado al usuario...")
+            cliente = obtener_cliente_desde_usuario(session, current_user)
+            print(f" Cliente encontrado: ID {cliente.id_cliente}")
+        except HTTPException as e:
+            print(f" Error HTTP al buscar cliente: {e.detail}")
+            raise e
+        except Exception as e:
+            print(f" Error inesperado al buscar cliente: {e}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"[cliente] No se encontró cliente vinculado al usuario {current_user.id_usuario}: {str(e)}"
+            )
+
+        # Paso 2: obtener comunidades del cliente
+        try:
+            print("Buscando comunidades del cliente...")
+            comunidades = obtener_comunidades_del_cliente(session, cliente.id_cliente) # type: ignore
+            print(f" Comunidades encontradas: {[c.nombre for c in comunidades]}")
+        except HTTPException as e:
+            print(f" Error HTTP al obtener comunidades: {e.detail}")
+            raise e
+        except Exception as e:
+            print(f" Error inesperado al obtener comunidades: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"[comunidades] Error al obtener comunidades del cliente {cliente.id_cliente}: {str(e)}"
+            )
+
+        # Paso 3: construir respuesta final con servicios
+        try:
+            print("Construyendo respuesta final con servicios...")
+            respuesta = construir_respuesta_contexto(session, comunidades)
+            print(" Respuesta construida correctamente.")
+        except HTTPException as e:
+            print(f" Error HTTP al construir respuesta: {e.detail}")
+            raise e
+        except Exception as e:
+            print(f" Error inesperado al construir respuesta: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"[respuesta] Error desconocido al construir la respuesta: {str(e)}"
+            )
+
+        return respuesta
+
+    except HTTPException as e:
+        print(f" HTTPException final capturada: {e.detail}")
+        raise e
+    except Exception as e:
+        print(f" Excepción general capturada: {e}")
+        raise HTTPException(status_code=500, detail=f"[general] Error inesperado: {str(e)}")
 

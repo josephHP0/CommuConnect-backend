@@ -2,6 +2,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from typing import Literal, Optional
 from datetime import date, datetime
 
+from app.core.enums import TipoDocumento
+
 '''
 class UserCreate(BaseModel):
     nombre: str
@@ -39,7 +41,7 @@ class UsuarioRead(UsuarioBase):
     model_config = ConfigDict(from_attributes=True)
 
 class ClienteBase(BaseModel):
-    tipo_documento: str
+    tipo_documento: TipoDocumento
     num_doc: str
     numero_telefono: str
     id_departamento: int
@@ -55,7 +57,7 @@ class ClienteCreate(ClienteBase):
     apellido: str
     email: str
     password: str
-
+    
 class ClienteRead(ClienteBase):
     id_cliente: int
     id_usuario: int
