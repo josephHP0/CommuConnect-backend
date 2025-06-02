@@ -4,10 +4,10 @@ from typing import List
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlmodel import Session
 from app.core.db import get_session
-from app.modules.reservations.services import obtener_fechas_presenciales
+from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales
 from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse
 
-router = APIRouter(prefix="/reservations", tags=["reservations"])
+router = APIRouter()
 
 @router.get(
     "/fechas-presenciales",
