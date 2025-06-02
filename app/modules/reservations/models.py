@@ -1,9 +1,6 @@
 from sqlmodel import SQLModel, Field, Relationship
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
-if TYPE_CHECKING:
-    from app.modules.reservations.models import SesionVirtual
-    from app.modules.services.models import Profesional, Local
 class Sesion(SQLModel, table=True):
     __tablename__ = "sesion"
     id_sesion: Optional[int] = Field(default=None, primary_key=True)
@@ -42,7 +39,6 @@ class SesionVirtual(SQLModel, table=True):
 
     # Relaciones (si tienes modelos para Sesion y Profesional)
     sesion: Optional["Sesion"] = Relationship(back_populates="sesiones_virtuales")
-    profesional: Optional["Profesional"] = Relationship(back_populates="sesiones_virtuales")
 
 class SesionPresencial(SQLModel, table=True):
     __tablename__ = "sesion_presencial"
@@ -60,4 +56,3 @@ class SesionPresencial(SQLModel, table=True):
 
     # Relaciones inversas
     sesion: Optional["Sesion"] = Relationship(back_populates="sesiones_presenciales")
-    local: Optional["Local"] = Relationship(back_populates="sesiones_presenciales")
