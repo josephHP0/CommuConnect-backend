@@ -4,8 +4,8 @@ from typing import List
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlmodel import Session
 from app.core.db import get_session
-from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales
-from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse
+from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas
+from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse
 
 router = APIRouter()
 
@@ -76,3 +76,49 @@ def listar_horas_presenciales(
         pass
 
     return HorasPresencialesResponse(horas=horas)
+
+@router.get(
+    "/sesiones-presenciales",
+    response_model=ListaSesionesPresencialesResponse,
+    summary="Listado de sesiones presenciales detalladas para un servicio/local/fecha/hora dados",
+)
+def sesiones_presenciales_detalladas(
+    *,
+    id_servicio: int = Query(..., description="ID del servicio a filtrar"),
+    id_distrito: int = Query(..., description="ID del distrito a filtrar"),
+    id_local: int = Query(..., description="ID del local a filtrar"),
+    fecha: date = Query(..., description="Fecha (YYYY-MM-DD)"),
+    hora: str  = Query(..., description="Hora de inicio (HH:MM)"),
+    session: Session = Depends(get_session),
+):
+    """
+    Retorna un JSON con todas las sesiones presenciales que cumplan:
+      - id_servicio
+      - distrito → local
+      - fecha exacta
+      - hora de inicio exacta
+
+    Cada objeto contendrá:
+      fecha, ubicacion, responsable, hora_inicio, hora_fin, vacantes_totales, vacantes_libres.
+    """
+
+    filas = listar_sesiones_presenciales_detalladas(
+        session=session,
+        id_servicio=id_servicio,
+        id_distrito=id_distrito,
+        id_local=id_local,
+        fecha_seleccionada=fecha,
+        hora_inicio=hora
+    )
+
+    # Si el service devolvió lista vacía, podemos distinguir dos casos:
+    #   a) el local no existe o no pertenece al distrito → devolvemos 404
+    #   b) el local existe pero no hay sesiones EXACTAS para esa fecha/hora → devolvemos [] pero 200 OK.
+    #
+    # Para separar ambos, el service podría retornar None en caso “Local inválido”.
+    if filas == []:
+        # Asumiremos que “[]” significa que no hay sesiones para esa combinación exacta.
+        # Si deseas un 404 cuando el local está mal, haz que el service devuelva 'None' en ese caso.
+        return ListaSesionesPresencialesResponse(sesiones=[])
+
+    return ListaSesionesPresencialesResponse(sesiones=filas)

@@ -56,3 +56,24 @@ class SesionPresencial(SQLModel, table=True):
 
     # Relaciones inversas
     sesion: Optional["Sesion"] = Relationship(back_populates="sesiones_presenciales")
+
+
+class Reserva(SQLModel, table=True):
+    __tablename__ = "reserva"
+
+    id_reserva: Optional[int] = Field(default=None, primary_key=True)
+    id_sesion:   Optional[int] = Field(default=None, foreign_key="sesion.id_sesion")
+    id_cliente:  Optional[int] = Field(default=None, foreign_key="cliente.id_cliente")
+
+    fecha_reservada: Optional[datetime] = Field(default=None)
+    estado_reserva:  Optional[str]      = Field(default=None, max_length=45)
+    archivo:         Optional[bytes]    = None  # LONGBLOB en MySQL
+
+    fecha_creacion:   Optional[datetime] = Field(default_factory=datetime.utcnow)
+    creado_por:       Optional[str]      = Field(default=None, max_length=50)
+    fecha_modificacion: Optional[datetime] = None
+    modificado_por:     Optional[str]      = Field(default=None, max_length=50)
+    estado:             Optional[int]      = Field(default=1)  # tinyint (0/1)
+
+    # Relaciones inversas
+    sesion:  Optional["Sesion"]  = Relationship(back_populates="reservas")
