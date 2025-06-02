@@ -10,3 +10,10 @@ class FechasPresencialesResponse(BaseModel):
         json_encoders = {
             date: lambda d: d.strftime("%d/%m/%Y")
         }
+
+class HorasPresencialesResponse(BaseModel):
+    horas: List[str]
+
+    class Config:
+        # En este caso, solo devolvemos cadenas. No necesitamos json_encoders para date.
+        orm_mode = True
