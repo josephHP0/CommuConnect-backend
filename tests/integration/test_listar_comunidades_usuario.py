@@ -1,6 +1,8 @@
 import sys
 import os
 from fastapi.testclient import TestClient
+import json
+
 
 # Agregar la base del proyecto al sys.path
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
@@ -59,6 +61,9 @@ def test_login_y_comunidades():
     for c in comunidades:
         servicios = [s['nombre'] for s in c.get('servicios', [])]
         print(f"- {c.get('nombre')} con servicios: {servicios}")
+    print("\n JSON crudo recibido:")
+    print(json.dumps(comunidades, indent=2))
+
 
 if __name__ == "__main__":
     test_login_y_comunidades()

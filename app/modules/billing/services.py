@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 
 from app.core.enums import MetodoPago
 from .models import Inscripcion, Pago, Plan
+from app.modules.billing.models import Inscripcion, DetalleInscripcion
 
 def get_planes(session: Session):
     planes = session.exec(select(Plan)).all()
@@ -89,3 +90,48 @@ def pagar_pendiente(
     session.commit()
     session.refresh(pago)
     return pago
+
+
+
+def obtener_inscripcion_activa(session: Session, id_cliente: int, id_comunidad: int) -> Inscripcion:
+    query = select(Inscripcion).where(
+        Inscripcion.id_cliente == id_cliente,
+        Inscripcion.id_comunidad == id_comunidad,
+        Inscripcion.estado == 1  # Solo inscripciones activas
+    )
+    inscripcion = session.exec(query).first()
+
+    if not inscripcion:
+        raise HTTPException(
+            status_code=404,
+            detail="El cliente no tiene inscripción activa en esta comunidad"
+        )
+
+    return inscripcion
+
+
+def es_plan_con_topes(session: Session, id_inscripcion: int) -> bool:
+    query = select(DetalleInscripcion).where(
+        DetalleInscripcion.id_inscripcion == id_inscripcion
+    )
+    resultado = session.exec(query).first()
+
+    return resultado is not None
+
+def obtener_detalle_topes(session: Session, id_inscripcion: int) -> dict:
+    detalle = session.exec(
+        select(DetalleInscripcion).where(
+            DetalleInscripcion.id_inscripcion == id_inscripcion
+        )
+    ).first()
+
+    if not detalle:
+        raise HTTPException(
+            status_code=404,
+            detail="No se encontró el detalle de topes para esta inscripción"
+        )
+
+    return {
+        "topes_disponibles": detalle.topes_disponibles,
+        "topes_consumidos": detalle.topes_consumidos
+    }

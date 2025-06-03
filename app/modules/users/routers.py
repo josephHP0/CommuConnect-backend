@@ -14,6 +14,20 @@ from app.core.security import verify_confirmation_token
 from app.modules.communities.schemas import ComunidadContexto
 from app.modules.auth.dependencies import get_current_user
 from app.modules.users.services import obtener_cliente_desde_usuario, obtener_comunidades_del_cliente, construir_respuesta_contexto
+from app.modules.communities.models import Comunidad
+from app.modules.communities.services import (
+    obtener_comunidad_con_imagen_base64,
+    obtener_servicios_con_imagen_base64
+)
+from app.modules.communities.schemas import ComunidadDetalleOut
+from app.modules.billing.schemas import UsoTopesOut
+from app.modules.billing.services import (
+    obtener_inscripcion_activa,
+    es_plan_con_topes,
+    obtener_detalle_topes
+    )
+
+
 
 router = APIRouter()
 
@@ -105,7 +119,7 @@ def unir_cliente_comunidad(
 
 
 
-@router.get("/api/usuarios/usuario/comunidades", response_model=List[ComunidadContexto])
+@router.get("/usuario/comunidades", response_model=List[ComunidadContexto])
 def listar_comunidades_usuario(
     session: Session = Depends(get_session),
     current_user: Usuario = Depends(get_current_user)
@@ -146,7 +160,7 @@ def listar_comunidades_usuario(
         # Paso 3: construir respuesta final con servicios
         try:
             print("Construyendo respuesta final con servicios...")
-            respuesta = construir_respuesta_contexto(session, comunidades)
+            respuesta = construir_respuesta_contexto(session, comunidades,cliente.id_cliente)
             print(" Respuesta construida correctamente.")
         except HTTPException as e:
             print(f" Error HTTP al construir respuesta: {e.detail}")
@@ -167,3 +181,48 @@ def listar_comunidades_usuario(
         print(f" Excepción general capturada: {e}")
         raise HTTPException(status_code=500, detail=f"[general] Error inesperado: {str(e)}")
 
+
+
+@router.get("/usuario/comunidad/{id_comunidad}")
+def obtener_comunidad_detalle(
+    id_comunidad: int,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    comunidad, imagen_base64 = obtener_comunidad_con_imagen_base64(session, id_comunidad)
+    servicios_out = obtener_servicios_con_imagen_base64(session, id_comunidad)
+
+    return ComunidadDetalleOut(
+        id_comunidad=comunidad.id_comunidad,
+        nombre=comunidad.nombre,
+        slogan=comunidad.slogan,  # Usado como texto descriptivo
+        imagen=imagen_base64,
+        servicios=servicios_out
+    )
+
+
+@router.get("/usuario/comunidad/{id_comunidad}/topes", response_model=UsoTopesOut)
+def obtener_uso_topes(
+    id_comunidad: int,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    cliente = obtener_cliente_desde_usuario(session, current_user)
+    id_cliente = cliente.id_cliente
+
+    inscripcion = obtener_inscripcion_activa(session, id_cliente, id_comunidad)
+
+    if not es_plan_con_topes(session, inscripcion.id_inscripcion):
+        return UsoTopesOut(estado="Ilimitado")
+
+    detalle = obtener_detalle_topes(session, inscripcion.id_inscripcion)
+    topes_disponibles = detalle["topes_disponibles"]
+    topes_consumidos = detalle["topes_consumidos"]
+    total = topes_disponibles + topes_consumidos
+
+    return UsoTopesOut(
+        plan="Plan por Topes",
+        topes_disponibles=topes_disponibles,
+        topes_consumidos=topes_consumidos,
+        estado=f"Restan {topes_disponibles} de {total}"
+    )

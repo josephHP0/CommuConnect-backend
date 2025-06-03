@@ -43,6 +43,7 @@ def registrar_inscripcion(
         current_user.email
     )
 
+
 #Endpoint para la pasaerla de pago, necesita la comunidad relacionada al pago
 @router.post("/comunidades/{id_comunidad}/pagar")
 def pagar_comunidad(
@@ -57,3 +58,5 @@ def pagar_comunidad(
         id_comunidad,
         current_user.email
     )
+
+
