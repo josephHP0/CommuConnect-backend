@@ -45,4 +45,3 @@ class Cliente(SQLModel, table=True):
     usuario: Optional[Usuario] = Relationship(back_populates="cliente")
 
 
-

@@ -2,9 +2,6 @@ from __future__ import annotations
 from typing import Optional, ClassVar, TYPE_CHECKING, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Relationship
-if TYPE_CHECKING:
-    from app.modules.communities.models import ComunidadXPlan
-    from app.modules.billing.models import Plan
 
 class Comunidad(SQLModel, table=True):
     id_comunidad: Optional[int] = Field(default=None, primary_key=True)
@@ -16,11 +13,6 @@ class Comunidad(SQLModel, table=True):
     fecha_modificacion: Optional[datetime] = Field(default=None)
     modificado_por: Optional[str] = Field(default=None, max_length=50)
     estado: bool = Field(default=True)
-
-    planes: List["ComunidadXPlan"] = Relationship(
-        back_populates="comunidad",
-        sa_relationship_kwargs={"lazy": "selectin"}
-    )
 
 class ClienteXComunidad(SQLModel, table=True):
     id_cliente: int = Field(foreign_key="cliente.id_cliente", primary_key=True)
@@ -37,7 +29,3 @@ class ComunidadXPlan(SQLModel, table=True):
     fecha_modificacion: Optional[datetime] = None
     modificado_por: Optional[str] = Field(default=None, max_length=50)
     estado: Optional[int] = Field(default=1)
-
-    # Relaciones inversas:
-    comunidad: Optional["Comunidad"] = Relationship(back_populates="planes")
-    plan: Optional["Plan"] = Relationship(back_populates="comunidades")

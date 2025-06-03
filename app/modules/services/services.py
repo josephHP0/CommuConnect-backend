@@ -1,7 +1,8 @@
 from sqlmodel import Session, select
 from app.modules.services.models import Servicio, Profesional
-from app.modules.reservations.models import Sesion, SesionVirtual
+from app.modules.reservations.models import SesionVirtual,Sesion
 from typing import List
+
 
 def obtener_servicios_por_ids(session: Session, servicio_ids: List[int]):
     if not servicio_ids:
