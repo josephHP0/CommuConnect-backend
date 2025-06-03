@@ -17,6 +17,7 @@ class Sesion(SQLModel, table=True):
     modificado_por: Optional[str] = Field(default=None, max_length=50)
     estado: Optional[bool] = Field(default=True)
 
+    reservas: List["Reserva"] = Relationship(back_populates="sesion")
     sesiones_virtuales: List["SesionVirtual"] = Relationship(back_populates="sesion")
     sesiones_presenciales: List["SesionPresencial"] = Relationship( back_populates="sesion",sa_relationship_kwargs={"lazy": "selectin"})
 
