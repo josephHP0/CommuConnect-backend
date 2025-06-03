@@ -78,3 +78,5 @@ class Reserva(SQLModel, table=True):
 
     # Relaciones inversas
     sesion:  Optional["Sesion"]  = Relationship(back_populates="reservas")
+
+SQLModel.update_forward_refs()
