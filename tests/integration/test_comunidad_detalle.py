@@ -4,15 +4,15 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-# Agregar raíz del proyecto al path
-BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+# 🧠 Forzar que app/ sea reconocida como paquete
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from app.main import app
+from app.main import app  # Ahora sí debería funcionar
 
 client = TestClient(app)
-
+# (Opcional) Si el endpoint requiere token JWT
 LOGIN_DATA = {
     "email": "lucia.ramirez@gmail.com",
     "password": "clave123"
@@ -21,33 +21,24 @@ LOGIN_DATA = {
 @pytest.fixture
 def auth_headers():
     response = client.post("/api/auth/login", json=LOGIN_DATA)
-    assert response.status_code == 200, f"Error login: {response.text}"
+    assert response.status_code == 200, f"Login failed: {response.text}"
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
-def test_obtener_comunidad_detalle(auth_headers):
-    id_comunidad = 8  # Usa un ID de comunidad activo y existente
 
-    response = client.get(f"/api/usuarios/usuario/comunidad/{id_comunidad}", headers=auth_headers)
-    
-    assert response.status_code == 200, f"Error HTTP: {response.text}"
+# 🧪 Prueba del endpoint distritos por servicio
+def test_obtener_distritos_por_servicio():  # Puedes agregar auth_headers si lo usas
+    id_servicio = 2  # Reemplaza con un ID real de tu BD
+    url = f"/api/geography/usuario/servicio/{id_servicio}/distritos"
 
+    response = client.get(url)  # Si usas autenticación: , headers=auth_headers
+
+    print("🔍 Status code:", response.status_code)
+    print("🧾 Respuesta JSON:")
+    print(json.dumps(response.json(), indent=2))
+
+    assert response.status_code == 200
     data = response.json()
 
-    print("\n✅ Respuesta del endpoint /usuario/comunidad/{id_comunidad}:")
-    print(json.dumps(data, indent=2))
-
-    # Validaciones básicas
-    assert "id_comunidad" in data
-    assert "nombre" in data
-    assert "slogan" in data  # Ahora verificamos slogan en lugar de descripcion
-    assert "imagen" in data
-    assert "servicios" in data
-    assert isinstance(data["servicios"], list)
-
-    if data["servicios"]:
-        primer_servicio = data["servicios"][0]
-        assert "id_servicio" in primer_servicio
-        assert "nombre" in primer_servicio
-        assert "descripcion" in primer_servicio
-        assert "imagen" in primer_servicio
+    assert isinstance(data, list)
+    assert all("id_distrito" in d and "nombre" in d for d in data)

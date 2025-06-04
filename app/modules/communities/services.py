@@ -164,7 +164,6 @@ def obtener_comunidad_por_id(session: Session, id_comunidad: int):
         comunidad_dict["imagen"] = base64.b64encode(comunidad_dict["imagen"]).decode("utf-8")
 
     return comunidad_dict
-    return obtener_servicios_por_ids(session, servicio_ids)
 
 
 
