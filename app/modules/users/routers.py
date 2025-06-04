@@ -160,7 +160,7 @@ def listar_comunidades_usuario(
         # Paso 3: construir respuesta final con servicios
         try:
             print("Construyendo respuesta final con servicios...")
-            respuesta = construir_respuesta_contexto(session, comunidades,cliente.id_cliente)
+            respuesta = construir_respuesta_contexto(session, comunidades,cliente.id_cliente) # type: ignore
             print(" Respuesta construida correctamente.")
         except HTTPException as e:
             print(f" Error HTTP al construir respuesta: {e.detail}")
@@ -193,7 +193,7 @@ def obtener_comunidad_detalle(
     servicios_out = obtener_servicios_con_imagen_base64(session, id_comunidad)
 
     return ComunidadDetalleOut(
-        id_comunidad=comunidad.id_comunidad,
+        id_comunidad=comunidad.id_comunidad, # type: ignore
         nombre=comunidad.nombre,
         slogan=comunidad.slogan,  # Usado como texto descriptivo
         imagen=imagen_base64,
@@ -210,12 +210,12 @@ def obtener_uso_topes(
     cliente = obtener_cliente_desde_usuario(session, current_user)
     id_cliente = cliente.id_cliente
 
-    inscripcion = obtener_inscripcion_activa(session, id_cliente, id_comunidad)
+    inscripcion = obtener_inscripcion_activa(session, id_cliente, id_comunidad) # type: ignore
 
-    if not es_plan_con_topes(session, inscripcion.id_inscripcion):
+    if not es_plan_con_topes(session, inscripcion.id_inscripcion): # type: ignore
         return UsoTopesOut(estado="Ilimitado")
 
-    detalle = obtener_detalle_topes(session, inscripcion.id_inscripcion)
+    detalle = obtener_detalle_topes(session, inscripcion.id_inscripcion) # type: ignore
     topes_disponibles = detalle["topes_disponibles"]
     topes_consumidos = detalle["topes_consumidos"]
     total = topes_disponibles + topes_consumidos

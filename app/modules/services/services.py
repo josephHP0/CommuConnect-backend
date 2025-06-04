@@ -10,7 +10,7 @@ def obtener_servicios_por_ids(session: Session, servicio_ids: List[int]):
 
     servicios = session.exec(
         select(Servicio).where(
-            Servicio.id_servicio.in_(servicio_ids),
+            Servicio.id_servicio.in_(servicio_ids), # type: ignore
             Servicio.estado == True  # Solo servicios activos
         )
     ).all()

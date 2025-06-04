@@ -1,11 +1,10 @@
-<<<<<<< HEAD
+
 from pydantic import BaseModel
 from typing import Optional
-=======
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List
->>>>>>> main
+
 
 class ServicioResumen(BaseModel):
     nombre: str
@@ -13,14 +12,12 @@ class ServicioResumen(BaseModel):
     class Config:
         orm_mode = True
 
-<<<<<<< HEAD
-
 class ServicioOut(BaseModel):
     id_servicio: int
     nombre: str
     descripcion: Optional[str] = None
     imagen: Optional[str] = None  # base64
-=======
+
 class ProfesionalRead(BaseModel):
     id_profesional: int
     nombre_completo: Optional[str]
@@ -33,4 +30,4 @@ class ProfesionalRead(BaseModel):
     estado: Optional[bool]
 
     model_config = ConfigDict(from_attributes=True)
->>>>>>> main
+

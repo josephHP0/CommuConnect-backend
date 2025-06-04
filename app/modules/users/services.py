@@ -178,7 +178,7 @@ def construir_respuesta_contexto(
             servicios_resumen = [ServicioResumen(nombre=s.nombre) for s in servicios]
 
             # 🔹 Determinar el estado de membresía individualmente
-            estado = tiene_membresia_activa(session, id_cliente, comunidad.id_comunidad)
+            estado = tiene_membresia_activa(session, id_cliente, comunidad.id_comunidad) # type: ignore
 
             comunidad_contexto = ComunidadContexto.from_orm_with_base64(
                 comunidad=comunidad,
@@ -196,3 +196,21 @@ def construir_respuesta_contexto(
 
     return respuesta
 
+def listar_clientes(
+    db: Session,
+    id_usuario: Optional[int] = None,
+    email: Optional[str] = None
+) -> List[Cliente]:
+    query = select(Cliente)
+
+    if id_usuario:
+        query = query.where(Cliente.id_usuario == id_usuario) # type: ignore
+    if email:
+        query = query.join(Usuario).where(Usuario.email == email)
+
+    clientes = db.exec(query).all()
+
+    if not clientes:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No se encontraron clientes")
+
+    return clientes # type: ignore
