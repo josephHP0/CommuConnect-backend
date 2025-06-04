@@ -10,7 +10,6 @@ class ServicioResumen(BaseModel):
     class Config:
         orm_mode = True
 
-
 class ServicioOut(BaseModel):
     id_servicio: int
     nombre: str

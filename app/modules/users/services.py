@@ -27,7 +27,7 @@ def crear_usuario(db: Session, usuario: UsuarioCreate):
         password=hashed_password,
         tipo=usuario.tipo, # type: ignore
         creado_por="sistema",
-        estado=False
+        estado=True
     )
     db.add(db_usuario)
     db.commit()
@@ -40,7 +40,7 @@ def crear_cliente(db: Session, cliente: ClienteCreate, bg: BackgroundTasks):
         apellido=cliente.apellido,
         email=cliente.email,
         password=cliente.password,
-        tipo=TipoUsuario.Cliente
+        tipo=TipoUsuario.Cliente,
     )
     nuevo_usuario = crear_usuario(db, usuario_data)
 
@@ -178,7 +178,7 @@ def construir_respuesta_contexto(
             servicios_resumen = [ServicioResumen(nombre=s.nombre) for s in servicios]
 
             # 🔹 Determinar el estado de membresía individualmente
-            estado = tiene_membresia_activa(session, id_cliente, comunidad.id_comunidad)
+            estado = tiene_membresia_activa(session, id_cliente, comunidad.id_comunidad) # type: ignore
 
             comunidad_contexto = ComunidadContexto.from_orm_with_base64(
                 comunidad=comunidad,

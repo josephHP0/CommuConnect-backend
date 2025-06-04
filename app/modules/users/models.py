@@ -5,7 +5,7 @@ from datetime import datetime, date
 from app.core.enums import TipoDocumento, TipoUsuario
 
 class Usuario(SQLModel, table=True):
-    __tablename__ = "usuario"
+    __tablename__ = "usuario" # type: ignore
     id_usuario: Optional[int] = Field(default=None, primary_key=True)
     nombre: str = Field(max_length=60)
     apellido: str = Field(max_length=60)
