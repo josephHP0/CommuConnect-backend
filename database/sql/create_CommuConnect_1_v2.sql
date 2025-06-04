@@ -135,7 +135,7 @@ DROP TABLE IF EXISTS `CommuConnect_1`.`servicio`;
 CREATE TABLE IF NOT EXISTS `CommuConnect_1`.`servicio` (
   `id_servicio` INT NOT NULL AUTO_INCREMENT,
   `nombre` VARCHAR(100) NOT NULL,
-  `descripccion` VARCHAR(100) NULL,
+  `descripcion` VARCHAR(100) NULL,
   `imagen` LONGBLOB NULL,
   `modalidad` ENUM('Virtual','Presencial') NULL,
   `fecha_creacion` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
@@ -157,6 +157,8 @@ CREATE TABLE IF NOT EXISTS `CommuConnect_1`.`local` (
   `direccion_detallada` VARCHAR(350) NULL,
   `id_servicio` INT NULL,
   `responsable` VARCHAR(45) NULL,
+  `nombre` VARCHAR(100) NULL,
+  `link` VARCHAR(200) NULL,
   `fecha_creacion` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   `creado_por` VARCHAR(50) NULL,
   `fecha_modificacion` TIMESTAMP NULL,
@@ -282,7 +284,7 @@ DROP TABLE IF EXISTS `CommuConnect_1`.`profesional`;
 CREATE TABLE IF NOT EXISTS `CommuConnect_1`.`profesional` (
   `id_profesional` INT NOT NULL AUTO_INCREMENT,
   `id_usuario` INT NULL,
-  `formulario` BLOB NULL,
+  `formulario` VARCHAR(200) NULL,
   `fecha_creacion` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   `creado_por` VARCHAR(50) NULL,
   `fecha_modificacion` TIMESTAMP NULL,
@@ -482,6 +484,26 @@ CREATE TABLE IF NOT EXISTS `CommuConnect_1`.`suspension` (
     ON DELETE CASCADE
     ON UPDATE CASCADE
 ) ENGINE=InnoDB;
+
+-- -----------------------------------------------------
+-- Table `CommuConnect_1`.`comunidadxplan`
+-- -----------------------------------------------------
+DROP TABLE IF EXISTS `CommuConnect_1`.`comunidadxplan`;
+CREATE TABLE IF NOT EXISTS `CommuConnect_1`.`comunidadxplan` (
+    id_comunidad INT,
+    id_plan INT,
+    fecha_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    creado_por VARCHAR(50),
+    fecha_modificacion TIMESTAMP NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+    modificado_por VARCHAR(50),
+    estado TINYINT DEFAULT 1,
+
+    PRIMARY KEY (id_comunidad, id_plan),
+    FOREIGN KEY (id_comunidad) REFERENCES comunidad(id_comunidad)
+        ON DELETE CASCADE ON UPDATE CASCADE,
+    FOREIGN KEY (id_plan) REFERENCES plan(id_plan)
+        ON DELETE CASCADE ON UPDATE CASCADE
+);
 
 SET SQL_MODE=@OLD_SQL_MODE;
 SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;

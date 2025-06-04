@@ -1,6 +1,7 @@
-from sqlalchemy import Enum as SAEnum
-from sqlmodel import SQLModel, Field
-from typing import Optional
+from __future__ import annotations
+from sqlalchemy import Enum as SAEnum, DECIMAL, Column
+from sqlmodel import SQLModel, Field, Relationship
+from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
 from sqlalchemy import DECIMAL, Column
 from sqlalchemy import Integer

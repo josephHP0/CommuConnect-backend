@@ -18,7 +18,7 @@ def eliminar_comunidad_service(id_comunidad: int, session: Session, current_admi
     ).first()
 
     if not comunidad:
-        logger.warning(f"⚠️ Comunidad con ID {id_comunidad} no encontrada o ya eliminada")
+        logger.warning(f"Comunidad con ID {id_comunidad} no encontrada o ya eliminada")
         raise HTTPException(status_code=404, detail="Comunidad no encontrada o ya eliminada")
 
     comunidad.estado = False

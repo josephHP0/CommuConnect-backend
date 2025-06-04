@@ -2,24 +2,8 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from typing import Literal, Optional
 from datetime import date, datetime
 
-'''
-class UserCreate(BaseModel):
-    nombre: str
-    apellido: str
-    email: EmailStr
-    password: str
-    repetir_password: str
-    tipo_documento: Literal['DNI', 'CARNET DE EXTRANJERÍA']
-    num_doc: str
-    numero_telefono: str
-    id_departamento: int
-    id_distrito: int
-    direccion: str
-    fecha_nac: date
-    genero: str
-    talla: int = Field(..., gt=0)
-    peso: int = Field(..., gt=0)
-'''
+from app.core.enums import TipoDocumento
+
 class UsuarioBase(BaseModel):
     nombre: str
     apellido: str
@@ -39,7 +23,7 @@ class UsuarioRead(UsuarioBase):
     model_config = ConfigDict(from_attributes=True)
 
 class ClienteBase(BaseModel):
-    tipo_documento: str
+    tipo_documento: TipoDocumento
     num_doc: str
     numero_telefono: str
     id_departamento: int
@@ -55,7 +39,7 @@ class ClienteCreate(ClienteBase):
     apellido: str
     email: str
     password: str
-
+    
 class ClienteRead(ClienteBase):
     id_cliente: int
     id_usuario: int

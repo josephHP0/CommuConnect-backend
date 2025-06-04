@@ -30,3 +30,4 @@ uvicorn==0.34.2
 pytest
 httpx
 sib-api-v3-sdk==7.6.0
+mysql-connector-python

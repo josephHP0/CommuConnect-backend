@@ -16,4 +16,4 @@ def login(data: LoginRequest):
             raise HTTPException(status_code=401, detail="Credenciales inválidas")
         
         token = create_access_token(str(user.id_usuario))
-        return {"access_token": token}
+        return {"access_token": token,"user_rol": user.tipo.value}

@@ -145,7 +145,7 @@ def listar_comunidades_usuario(
         # Paso 2: obtener comunidades del cliente
         try:
             print("Buscando comunidades del cliente...")
-            comunidades = obtener_comunidades_del_cliente(session, cliente.id_cliente)
+            comunidades = obtener_comunidades_del_cliente(session, cliente.id_cliente) # type: ignore
             print(f" Comunidades encontradas: {[c.nombre for c in comunidades]}")
         except HTTPException as e:
             print(f" Error HTTP al obtener comunidades: {e.detail}")
