@@ -8,6 +8,7 @@ from typing import Optional
 
 from app.modules.services.models import ComunidadXServicio, Servicio
 from app.modules.services.services import obtener_servicios_por_ids
+from app.modules.services.schemas import ServicioOut
 
 logger = logging.getLogger(__name__)
 
@@ -163,3 +164,43 @@ def obtener_comunidad_por_id(session: Session, id_comunidad: int):
         comunidad_dict["imagen"] = base64.b64encode(comunidad_dict["imagen"]).decode("utf-8")
 
     return comunidad_dict
+    return obtener_servicios_por_ids(session, servicio_ids)
+
+
+
+def obtener_comunidad_con_imagen_base64(session: Session, id_comunidad: int):
+    comunidad = session.exec(
+        select(Comunidad).where(
+            Comunidad.id_comunidad == id_comunidad,
+            Comunidad.estado == True
+        )
+    ).first()
+
+    if not comunidad:
+        raise HTTPException(status_code=404, detail="Comunidad no encontrada")
+
+    imagen_base64 = base64.b64encode(comunidad.imagen).decode("utf-8") if comunidad.imagen else None
+
+    return comunidad, imagen_base64
+
+
+def obtener_servicios_con_imagen_base64(session: Session, id_comunidad: int) -> list[ServicioOut]:
+    servicios = obtener_servicios_de_comunidad(session, id_comunidad)
+    servicios_out = []
+
+    for servicio in servicios:
+        imagen_base64 = (
+            base64.b64encode(servicio.imagen).decode("utf-8")
+            if servicio.imagen else None
+        )
+
+        servicio_out = ServicioOut(
+            id_servicio=servicio.id_servicio,
+            nombre=servicio.nombre,
+            descripcion=servicio.descripcion,
+            imagen=imagen_base64
+        )
+
+        servicios_out.append(servicio_out)
+
+    return servicios_out

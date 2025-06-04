@@ -3,6 +3,8 @@ from sqlalchemy import Enum as SAEnum, DECIMAL, Column
 from sqlmodel import SQLModel, Field, Relationship
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
+from sqlalchemy import DECIMAL, Column
+from sqlalchemy import Integer
 from app.core.enums import MetodoPago
 
 class Plan(SQLModel, table=True):
@@ -39,3 +41,21 @@ class Inscripcion(SQLModel, table=True):
     fecha_modificacion: Optional[datetime] = None
     modificado_por: Optional[str] = Field(default=None, max_length=50)
     estado: int = 1  # o el valor que corresponda por defecto
+
+class DetalleInscripcion(SQLModel, table=True):
+    __tablename__ = "detalle_inscripcion"
+
+    id_registros_inscripcion: Optional[int] = Field(default=None, primary_key=True)
+    id_inscripcion: int = Field(foreign_key="inscripcion.id_inscripcion")
+    fecha_registro: Optional[datetime] = None
+    fecha_inicio: Optional[datetime] = None
+    fecha_fin: Optional[datetime] = None
+    topes_disponibles: int
+    topes_consumidos: int
+    fecha_creacion: datetime = Field(default_factory=datetime.utcnow)
+    creado_por: str = Field(max_length=50)
+    fecha_modificacion: Optional[datetime] = None
+    modificado_por: Optional[str] = Field(default=None, max_length=50)
+    estado: int
+
+    
