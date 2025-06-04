@@ -14,10 +14,6 @@ class FechasPresencialesResponse(BaseModel):
 class HorasPresencialesResponse(BaseModel):
     horas: List[str]
 
-    class Config:
-        # En este caso, solo devolvemos cadenas. No necesitamos json_encoders para date.
-        orm_mode = True
-
 
 class SesionPresencialOut(BaseModel):
     fecha: date

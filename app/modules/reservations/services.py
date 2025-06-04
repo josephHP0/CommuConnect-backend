@@ -1,6 +1,5 @@
-from datetime import date
+from datetime import date, datetime, time, timedelta
 from typing import List
-
 from sqlmodel import Session, select
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
@@ -95,10 +94,20 @@ def obtener_horas_presenciales(
         (row[0] if isinstance(row, tuple) else row) for row in raw_results
     ]
 
-    # 3) Convertir cada objeto time (tipo datetime.time) a string "HH:MM"
-    horas_str = [t.strftime("%H:%M") for t in horas_objeto]
-    horas_str.sort()
-    return horas_str
+    horas_iso: List[str] = []
+    for t in horas_objeto:
+        if isinstance(t, time) or isinstance(t, datetime):
+            horas_iso.append(t.strftime("%H:%M:%S"))
+        else:
+            # Si viniera timedelta (p. ej. SQLite):
+            total = int(t.total_seconds())
+            h = total // 3600
+            m = (total % 3600) // 60
+            s = total % 60
+            horas_iso.append(f"{h:02d}:{m:02d}:{s:02d}")
+
+    # 6) Devolver el JSON con la lista de strings “HH:MM:SS”
+    return horas_iso
 
 def listar_sesiones_presenciales_detalladas(
     session: Session,
