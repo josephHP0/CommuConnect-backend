@@ -117,3 +117,23 @@ def comunidades_con_servicios(session: Session = Depends(get_session)):
 @router.get("/comunidades-con-servicios_sinImagen")
 def comunidades_con_servicios_sinImagen(session: Session = Depends(get_session)):
     return get_comunidades_con_servicios_sin_imagen(session)
+
+#Endpoint para obtener una comunidad por ID
+@router.get("/comunidad/{id_comunidad}", response_model=ComunidadRead)
+def obtener_comunidad_por_id(
+    id_comunidad: int,
+    session: Session = Depends(get_session)
+):
+    comunidad = session.exec(
+        select(Comunidad).where(Comunidad.id_comunidad == id_comunidad, Comunidad.estado == True)
+    ).first()
+
+    if not comunidad:
+        logger.warning(f"Comunidad con ID {id_comunidad} no encontrada o inactiva")
+        raise HTTPException(status_code=404, detail="Comunidad no encontrada o inactiva")
+
+    comunidad_dict = comunidad.__dict__.copy()
+    if comunidad_dict.get("imagen"):
+        comunidad_dict["imagen"] = base64.b64encode(comunidad_dict["imagen"]).decode("utf-8")
+
+    return ComunidadOut(**comunidad_dict)

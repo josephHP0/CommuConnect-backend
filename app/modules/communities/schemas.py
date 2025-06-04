@@ -38,8 +38,8 @@ class ComunidadOut(BaseModel):
     imagen: Optional[str] = None
     fecha_creacion: datetime
     creado_por: str
-    fecha_modificacion: datetime
-    modificado_por: str
+    fecha_modificacion: Optional[datetime] = None  # <-- Permitir None
+    modificado_por: Optional[str] = None           # <-- Permitir None
     estado: int
 
     model_config = ConfigDict(from_attributes=True)

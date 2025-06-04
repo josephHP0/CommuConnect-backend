@@ -148,4 +148,18 @@ def obtener_servicios_de_comunidad(session: Session, id_comunidad: int):
         )
     ).all()
 
-    return obtener_servicios_por_ids(session, servicio_ids)
+    return obtener_servicios_por_ids(session, servicio_ids) # type: ignore
+
+def obtener_comunidad_por_id(session: Session, id_comunidad: int):
+    comunidad = session.exec(
+        select(Comunidad).where(Comunidad.id_comunidad == id_comunidad, Comunidad.estado == True)
+    ).first()
+
+    if not comunidad:
+        raise HTTPException(status_code=404, detail="Comunidad no encontrada o inactiva")
+
+    comunidad_dict = comunidad.dict()
+    if comunidad_dict.get("imagen"):
+        comunidad_dict["imagen"] = base64.b64encode(comunidad_dict["imagen"]).decode("utf-8")
+
+    return comunidad_dict
