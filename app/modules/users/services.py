@@ -27,7 +27,7 @@ def crear_usuario(db: Session, usuario: UsuarioCreate):
         password=hashed_password,
         tipo=usuario.tipo, # type: ignore
         creado_por="sistema",
-        estado=False
+        estado=True
     )
     db.add(db_usuario)
     db.commit()
@@ -40,7 +40,7 @@ def crear_cliente(db: Session, cliente: ClienteCreate, bg: BackgroundTasks):
         apellido=cliente.apellido,
         email=cliente.email,
         password=cliente.password,
-        tipo=TipoUsuario.Cliente
+        tipo=TipoUsuario.Cliente,
     )
     nuevo_usuario = crear_usuario(db, usuario_data)
 
@@ -196,21 +196,3 @@ def construir_respuesta_contexto(
 
     return respuesta
 
-def listar_clientes(
-    db: Session,
-    id_usuario: Optional[int] = None,
-    email: Optional[str] = None
-) -> List[Cliente]:
-    query = select(Cliente)
-
-    if id_usuario:
-        query = query.where(Cliente.id_usuario == id_usuario) # type: ignore
-    if email:
-        query = query.join(Usuario).where(Usuario.email == email)
-
-    clientes = db.exec(query).all()
-
-    if not clientes:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No se encontraron clientes")
-
-    return clientes # type: ignore

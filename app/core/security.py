@@ -37,7 +37,7 @@ def create_access_token(subject: str,extra_claims: Optional[Dict[str, Any]] = No
     if extra_claims:
         to_encode.update(extra_claims)
 
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM) # type: ignore
 
 def decode_access_token(token: str) -> Dict[str, Any]:
     """
@@ -45,7 +45,7 @@ def decode_access_token(token: str) -> Dict[str, Any]:
     Lanza JWTError si no es válido o ha expirado.
     """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]) # type: ignore
         return payload
     except JWTError as e:
         raise
@@ -59,14 +59,14 @@ def create_confirmation_token(email: str) -> str:
     now    = datetime.utcnow()
     expire = now + timedelta(hours=CONFIRM_TOKEN_EXPIRE_HOURS)
     payload = {"sub": email, "iat": now, "exp": expire}
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM) # type: ignore
 
 def verify_confirmation_token(token: str) -> Optional[str]:
     """
     Devuelve el email si el token es válido, si no → None.
     """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM]) # type: ignore
         return payload.get("sub")
     except JWTError:
         return None
