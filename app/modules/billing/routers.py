@@ -13,15 +13,6 @@ router = APIRouter()
 def listar_planes(session: Session = Depends(get_session)):
     return get_planes(session)
 
-#Endpoint para la pantalla "Elige tu plan", genera una orden de pago
-@router.post("/planes/{id_plan}/seleccionar")
-def seleccionar_plan(
-    id_plan: int,
-    session: Session = Depends(get_session),
-    current_user=Depends(get_current_user)
-):
-    return crear_pago_pendiente(session, id_plan, current_user.email)
-
 
 #Endpoint para registrar una inscripcion, necesita el id de la comunidad y opcionalmente el id del plan y del pago
 #Se da a la vez de seleccionar plan ya sea con un plan elegido o con el boton de omitir
@@ -34,6 +25,11 @@ def registrar_inscripcion(
     id_cliente: int = Depends(get_current_cliente_id),
     current_user=Depends(get_current_user)
 ):
+    # Si se selecciona un plan, crear pago pendiente si no hay id_pago
+    if id_plan and not id_pago:
+        pago = crear_pago_pendiente(session, id_plan, current_user.email)
+        id_pago = pago.id_pago
+
     return crear_inscripcion(
         session,
         id_plan,
@@ -44,7 +40,7 @@ def registrar_inscripcion(
     )
 
 
-#Endpoint para la pasaerla de pago, necesita la comunidad relacionada al pago
+#Endpoint para la pasarela de pago, necesita la comunidad relacionada al pago
 @router.post("/comunidades/{id_comunidad}/pagar")
 def pagar_comunidad(
     id_comunidad: int,

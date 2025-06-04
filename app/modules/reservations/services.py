@@ -3,10 +3,10 @@ from typing import List
 
 from sqlmodel import Session, select
 from sqlalchemy import func
-
-from app.modules.reservations.models import Sesion, SesionPresencial
+from sqlalchemy.orm import selectinload
+from app.modules.reservations.models import Sesion, SesionPresencial, SesionVirtual, Reserva
 from app.modules.services.models import Local
-
+from app.modules.users.models import Cliente
 
 def obtener_fechas_presenciales(
     session: Session,
@@ -268,3 +268,53 @@ def listar_sesiones_presenciales_detalladas(
         })
 
     return resultado
+
+def obtener_fechas_inicio_por_profesional(db: Session, id_profesional: int):
+    statement = (
+        select(SesionVirtual)
+        .where(SesionVirtual.id_profesional == id_profesional)
+        .options(selectinload(SesionVirtual.sesion))
+    )
+
+    resultados = db.exec(statement).all()
+
+    if not resultados:
+        return None
+
+    fechas_formateadas = [
+        {
+            "id_sesion_virtual": sv.id_sesion_virtual,
+            "id_sesion": sv.sesion.id_sesion if sv.sesion else None,
+            "dia": sv.sesion.inicio.strftime("%Y-%m-%d") if sv.sesion and sv.sesion.inicio else None,
+            "hora": sv.sesion.inicio.strftime("%H:%M:%S") if sv.sesion and sv.sesion.inicio else None
+        }
+        for sv in resultados
+        if sv.sesion and sv.sesion.inicio
+    ]
+    return fechas_formateadas
+
+def existe_reserva_para_usuario(db: Session, id_sesion: int, id_usuario: int) -> bool:
+    # Buscar cliente
+    stmt_cliente = select(Cliente).where(Cliente.id_usuario == id_usuario)
+    cliente = db.exec(stmt_cliente).first()
+
+    if not cliente:
+        print("❌ Cliente no encontrado para este usuario.")
+        return False
+
+    print(f"🔍 Verificando reserva para id_sesion={id_sesion}, id_cliente={cliente.id_cliente}")
+
+    # Buscar reserva
+    stmt_reserva = select(Reserva).where(
+        Reserva.id_sesion == id_sesion,
+        Reserva.id_cliente == cliente.id_cliente,
+    )
+
+    reserva = db.exec(stmt_reserva).first()
+
+    if reserva:
+        print(f"✅ Reserva encontrada: ID {reserva.id_reserva}")
+    else:
+        print("⚠️ No se encontró ninguna reserva activa.")
+
+    return reserva is not None

@@ -4,9 +4,9 @@ from typing import List
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlmodel import Session
 from app.core.db import get_session
-from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas
+from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario
 from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse
-
+from app.modules.auth.dependencies import get_current_user  
 router = APIRouter()
 
 @router.get(
@@ -122,3 +122,31 @@ def sesiones_presenciales_detalladas(
         return ListaSesionesPresencialesResponse(sesiones=[])
 
     return ListaSesionesPresencialesResponse(sesiones=filas)
+
+@router.get("/fechas-sesiones_virtuales_por_profesional/{id_profesional}")
+def get_fechas_sesiones(id_profesional: int, session: Session = Depends(get_session)):
+    try:
+        fechas = obtener_fechas_inicio_por_profesional(session, id_profesional)
+
+        if not fechas:
+            raise HTTPException(status_code=404, detail="No se encontraron sesiones virtuales.")
+
+        return {"fechas_inicio": fechas}
+
+    except Exception as e:
+        print(f"❌ Error inesperado: {e}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
+
+@router.get("/reserva-existe/{id_sesion}")
+def verificar_reserva(
+    id_sesion: int,
+    db: Session = Depends(get_session),
+    usuario=Depends(get_current_user)
+):
+    try:
+        id_usuario= usuario.id_usuario  # 🔧 usa el campo correcto aquí
+        existe = existe_reserva_para_usuario(db, id_sesion, id_usuario)
+        return {"reserva_existente": existe}
+    except Exception as e:
+        print(f"❌ Error al verificar reserva: {e}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor.")
