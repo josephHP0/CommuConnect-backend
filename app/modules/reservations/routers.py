@@ -1,12 +1,14 @@
-from datetime import date
+from datetime import datetime, date
 from typing import List
-
+from fastapi import HTTPException
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlmodel import Session
 from app.core.db import get_session
+from app.modules.services.models import Local
 from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario
 from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse
 from app.modules.auth.dependencies import get_current_user  
+
 router = APIRouter()
 
 @router.get(
@@ -46,34 +48,34 @@ def listar_fechas_presenciales(
 )
 def listar_horas_presenciales(
     *,
-    id_servicio: int = Query(..., description="ID del servicio a filtrar"),
-    id_distrito: int = Query(..., description="ID del distrito a filtrar"),
-    id_local: int = Query(..., description="ID del local a filtrar"),
-    fecha: date = Query(..., description="Fecha en formato YYYY-MM-DD"),
+    id_servicio: int = Query(..., description="ID del servicio"),
+    id_distrito: int = Query(..., description="ID del distrito"),
+    id_local: int = Query(..., description="ID del local"),
+    fecha: str = Query(..., description="Fecha en formato DD/MM/YYYY (p.ej. 10/06/2025)"),
     session: Session = Depends(get_session),
 ):
-    """
-    Retorna todas las horas (sin repetir) en que hay sesiones presenciales
-    para el servicio `id_servicio`, en el distrito `id_distrito`, 
-    local `id_local` y la fecha `fecha` (solo día/mes/año).
-    """
+    # 1) Convertir la cadena DD/MM/YYYY a date
+    try:
+        fecha_obj = datetime.strptime(fecha, "%d/%m/%Y").date()
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato inválido para 'fecha'. Debe ser DD/MM/YYYY, por ejemplo: 10/06/2025."
+        )
 
+    # 2) Validar local/distrito
+    local_obj = session.get(Local, id_local)
+    if not local_obj or local_obj.id_distrito != id_distrito:
+        raise HTTPException(status_code=404, detail="Local no encontrado en ese distrito.")
+
+    # 3) Obtener la lista de horas (List[str])
     horas = obtener_horas_presenciales(
         session=session,
         id_servicio=id_servicio,
         id_distrito=id_distrito,
         id_local=id_local,
-        fecha_seleccionada=fecha
+        fecha_seleccionada=fecha_obj
     )
-
-    # Si el service devolvió lista vacía y queremos distinguir “local inválido” 
-    # de “no hay sesiones a esa hora”, podríamos hacer:
-    if horas == []:
-        # Aquí asumimos que `[]` puede significar “local inválido” o “sin horas disponibles”.
-        # Si quisieras un 404 distinto a “no hay sesiones”:
-        #    raise HTTPException(404, "Local no existe o no pertenece al distrito")
-        # Pero si simplemente quieres “¿no hay horas disponibles?”, devuelves [] sin error.
-        pass
 
     return HorasPresencialesResponse(horas=horas)
 
