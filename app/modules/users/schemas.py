@@ -57,3 +57,18 @@ class AdministradorRead(BaseModel):
     id_usuario: int
 
     model_config = ConfigDict(from_attributes=True)
+
+class ClienteUpdate(BaseModel):
+    # Campos editables
+    nombre: Optional[str] = None
+    apellido: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+    numero_telefono: Optional[str] = None
+    id_departamento: Optional[int] = None
+    id_distrito: Optional[int] = None
+    direccion: Optional[str] = None
+    talla: Optional[int] = None
+    peso: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
