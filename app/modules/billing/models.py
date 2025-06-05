@@ -43,7 +43,7 @@ class Inscripcion(SQLModel, table=True):
     estado: int = 1  # o el valor que corresponda por defecto
 
 class DetalleInscripcion(SQLModel, table=True):
-    __tablename__ = "detalle_inscripcion"
+    __tablename__ = "detalle_inscripcion" # type: ignore
 
     id_registros_inscripcion: Optional[int] = Field(default=None, primary_key=True)
     id_inscripcion: int = Field(foreign_key="inscripcion.id_inscripcion")
@@ -58,4 +58,3 @@ class DetalleInscripcion(SQLModel, table=True):
     modificado_por: Optional[str] = Field(default=None, max_length=50)
     estado: int
 
-    

@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id, get_current_user
-from .services import crear_inscripcion, crear_pago_pendiente, get_planes, pagar_pendiente
-from .schemas import PlanOut
+from .services import crear_detalle_inscripcion, crear_inscripcion, crear_pago_pendiente, get_planes, pagar_pendiente
+from .schemas import DetalleInscripcionOut, PlanOut
 from typing import List, Optional
 
 router = APIRouter()
@@ -48,11 +48,11 @@ def pagar_comunidad(
     id_cliente: int = Depends(get_current_cliente_id),
     current_user=Depends(get_current_user)
 ):
-    return pagar_pendiente(
+    pagar_pendiente(
         session,
         id_cliente,
         id_comunidad,
         current_user.email
     )
-
+    return {"ok": True, "message": "Pago realizado exitosamente"}
 
