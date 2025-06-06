@@ -1,13 +1,26 @@
 from datetime import datetime
 from pydantic import BaseModel
 from typing import Optional
+from typing import Union
 
 class PlanOut(BaseModel):
     id_plan: int
     titulo: str
     descripcion: str
-    topes: int
+    topes: Union[int, str]
     precio: float
+
+    @property
+    def topes_display(self):
+        return "ilimitado" if isinstance(self.topes, int) and self.topes > 100 else self.topes
+
+    class Config:
+        from_attributes = True  # <--- Cambia esto
+
+    def dict(self, *args, **kwargs):
+        data = super().dict(*args, **kwargs)
+        data["topes"] = self.topes_display
+        return data
 
 
 class UsoTopesOut(BaseModel):

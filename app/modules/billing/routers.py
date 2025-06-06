@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends
-from sqlmodel import Session
+from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id, get_current_user
+from app.modules.billing.models import Plan
+from app.modules.communities.models import ComunidadXPlan
 from .services import crear_inscripcion, crear_pago_pendiente, get_planes, pagar_pendiente
 from .schemas import DetalleInscripcionOut, PlanOut
 from typing import List, Optional
@@ -11,7 +13,23 @@ router = APIRouter()
 #Lista los 4 planes disponibles
 @router.get("/planes", response_model=List[PlanOut])
 def listar_planes(session: Session = Depends(get_session)):
-    return get_planes(session)
+    planes = get_planes(session)
+    return [PlanOut.from_orm(plan) for plan in planes]
+
+@router.get("/comunidades/{id_comunidad}/planes", response_model=List[PlanOut])
+def obtener_planes_por_comunidad(
+    id_comunidad: int,
+    session: Session = Depends(get_session)
+):
+    planes_ids = session.exec(
+        select(ComunidadXPlan.id_plan).where(ComunidadXPlan.id_comunidad == id_comunidad)
+    ).all()
+    if not planes_ids:
+        return []
+    planes = session.exec(
+        select(Plan).where(Plan.id_plan.in_(planes_ids)) # type: ignore
+    ).all()
+    return [PlanOut.from_orm(plan) for plan in planes]
 
 
 #Endpoint para registrar una inscripcion, necesita el id de la comunidad y opcionalmente el id del plan y del pago
