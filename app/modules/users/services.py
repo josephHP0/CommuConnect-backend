@@ -175,7 +175,7 @@ def construir_respuesta_contexto(
             servicios = obtener_servicios_de_comunidad(session, comunidad.id_comunidad) # type: ignore
             print(f"Servicios obtenidos para '{comunidad.nombre}': {[s.nombre for s in servicios]}")
 
-            servicios_resumen = [ServicioResumen(nombre=s.nombre) for s in servicios]
+            servicios_resumen = [ServicioResumen(nombre=s.nombre,modalidad=s.modalidad) for s in servicios]
 
             # 🔹 Determinar el estado de membresía individualmente
             estado = tiene_membresia_activa(session, id_cliente, comunidad.id_comunidad) # type: ignore

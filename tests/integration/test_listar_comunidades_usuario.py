@@ -17,8 +17,8 @@ client = TestClient(app)
 
 # Credenciales de un usuario que ya debe existir en la base de datos
 LOGIN_DATA = {
-    "email": "lucia.ramirez@gmail.com",
-    "password": "clave123"
+    "email": "mr@cc.com",
+    "password": "1234"
 }
 
 

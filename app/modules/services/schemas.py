@@ -6,15 +6,18 @@ from typing import Optional, List
 
 class ServicioResumen(BaseModel):
     nombre: str
-
+    modalidad: str
     class Config:
         orm_mode = True
 
 class ServicioOut(BaseModel):
     id_servicio: int
     nombre: str
+    modalidad: str
     descripcion: Optional[str] = None
     imagen: Optional[str] = None  # base64
+
+
 class ProfesionalRead(BaseModel):
     id_profesional: int
     nombre_completo: Optional[str]
