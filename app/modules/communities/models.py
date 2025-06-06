@@ -19,7 +19,7 @@ class ClienteXComunidad(SQLModel, table=True):
     id_comunidad: int = Field(foreign_key="comunidad.id_comunidad", primary_key=True)
 
 class ComunidadXPlan(SQLModel, table=True):
-    __tablename__: ClassVar[str] = "comunidadxplan"
+    __tablename__: ClassVar[str] = "comunidadxplan" # type: ignore
 
     id_comunidad: int = Field(foreign_key="comunidad.id_comunidad",primary_key=True)
     id_plan: int = Field(foreign_key="plan.id_plan",primary_key=True)

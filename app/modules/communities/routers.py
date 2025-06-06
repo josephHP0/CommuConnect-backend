@@ -2,6 +2,8 @@ import traceback
 from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
 from sqlmodel import Session, select
 from app.core.db import get_session
+from app.modules.auth.dependencies import get_current_cliente_id
+from app.modules.billing.models import Inscripcion
 from app.modules.communities.models import Comunidad
 from app.modules.communities.schemas import ComunidadOut, ComunidadRead
 from typing import List, Optional
@@ -137,3 +139,26 @@ def obtener_comunidad_por_id(
         comunidad_dict["imagen"] = base64.b64encode(comunidad_dict["imagen"]).decode("utf-8")
 
     return ComunidadOut(**comunidad_dict)
+
+
+@router.get("/comunidades-sin-inscripcion", response_model=List[ComunidadRead])
+def comunidades_sin_inscripcion(
+    session: Session = Depends(get_session),
+    id_cliente: int = Depends(get_current_cliente_id)
+):
+    try:
+        # IDs de comunidades donde el usuario ya está inscrito
+        subquery = select(Inscripcion.id_comunidad).where(Inscripcion.id_cliente == id_cliente)
+        # Comunidades activas donde el usuario NO está inscrito
+        comunidades = session.exec(
+            select(Comunidad)
+            .where(
+                Comunidad.estado == True,
+                Comunidad.id_comunidad.not_in(subquery) # type: ignore
+            )
+        ).all()
+        response = [ComunidadRead.from_orm_with_base64(c) for c in comunidades]
+        return response
+    except Exception as e:
+        logger.error(f"❌ Error al obtener comunidades sin inscripción: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error al obtener comunidades sin inscripción")

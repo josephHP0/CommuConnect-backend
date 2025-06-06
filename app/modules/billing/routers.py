@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id, get_current_user
-from .services import crear_detalle_inscripcion, crear_inscripcion, crear_pago_pendiente, get_planes, pagar_pendiente
+from .services import crear_inscripcion, crear_pago_pendiente, get_planes, pagar_pendiente
 from .schemas import DetalleInscripcionOut, PlanOut
 from typing import List, Optional
 

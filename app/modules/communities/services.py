@@ -194,7 +194,7 @@ def obtener_servicios_con_imagen_base64(session: Session, id_comunidad: int) -> 
         )
 
         servicio_out = ServicioOut(
-            id_servicio=servicio.id_servicio,
+            id_servicio=servicio.id_servicio, # type: ignore
             nombre=servicio.nombre,
             descripcion=servicio.descripcion,
             imagen=imagen_base64

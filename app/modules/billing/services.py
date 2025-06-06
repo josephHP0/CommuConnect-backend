@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import Optional
 from fastapi import HTTPException
 from sqlmodel import Session, select
+
+from app.modules.communities.models import ClienteXComunidad
 from .schemas import DetalleInscripcionCreate
 from datetime import datetime
 
@@ -46,18 +48,75 @@ def crear_inscripcion(
     id_pago: Optional[int],
     creado_por: str
 ):
-    inscripcion = Inscripcion(
-        id_plan=id_plan,
-        id_comunidad=id_comunidad,
-        id_cliente=id_cliente,
-        id_pago=id_pago,
-        creado_por=creado_por,
-        estado=1  # o el valor que corresponda
-    )
-    session.add(inscripcion)
-    session.commit()
-    session.refresh(inscripcion)
-    return inscripcion
+    from datetime import timedelta
+
+    ahora = datetime.utcnow()
+    hace_un_mes = ahora - timedelta(days=30)
+
+    # Busca inscripción previa pendiente en el último mes
+    inscripcion_previa = session.exec(
+        select(Inscripcion)
+        .where(
+            Inscripcion.id_cliente == id_cliente,
+            Inscripcion.id_comunidad == id_comunidad,
+            Inscripcion.estado == 0,
+            Inscripcion.fecha_creacion >= hace_un_mes
+        )
+    ).first()
+
+    # Busca inscripción previa ya pagada
+    inscripcion_pagada = session.exec(
+        select(Inscripcion)
+        .where(
+            Inscripcion.id_cliente == id_cliente,
+            Inscripcion.id_comunidad == id_comunidad,
+            Inscripcion.estado == 1
+        )
+    ).first()
+
+    if inscripcion_previa:
+        # Sobrescribe la inscripción pendiente
+        inscripcion_previa.id_plan = id_plan
+        inscripcion_previa.id_pago = id_pago
+        inscripcion_previa.modificado_por = creado_por
+        inscripcion_previa.fecha_modificacion = ahora
+        session.add(inscripcion_previa)
+        session.commit()
+        session.refresh(inscripcion_previa)
+        return inscripcion_previa
+    elif inscripcion_pagada:
+        # Crea nueva inscripción con estado según si hay pago
+        estado = 0 if id_pago is None else 1
+        inscripcion = Inscripcion(
+            estado=estado,
+            id_plan=id_plan,
+            id_comunidad=id_comunidad,
+            id_cliente=id_cliente,
+            id_pago=id_pago,
+            creado_por=creado_por,
+            fecha_creacion=ahora
+        )
+        session.add(inscripcion)
+        session.commit()
+        session.refresh(inscripcion)
+        return inscripcion
+    else:
+        # No hay inscripción previa, crea nueva
+        estado = 0 if id_pago is None else 1
+        inscripcion = Inscripcion(
+            estado=estado,
+            id_plan=id_plan,
+            id_comunidad=id_comunidad,
+            id_cliente=id_cliente,
+            id_pago=id_pago,
+            creado_por=creado_por,
+            fecha_creacion=ahora
+        )
+        session.add(inscripcion)
+        session.commit()
+        session.refresh(inscripcion)
+        return inscripcion
+
 
 
 def pagar_pendiente(
@@ -75,7 +134,7 @@ def pagar_pendiente(
         )
     ).first()
     if not inscripcion or not inscripcion.id_pago:
-        raise HTTPException(status_code=404, detail="No hay pago pendiente para esta comunidad")
+        raise HTTPException(status_code=404, detail="No hay pago pendiente para esta comunidad, redirigase a la página de inscripción")
 
     # Busca el pago pendiente
     pago = session.get(Pago, inscripcion.id_pago)
@@ -90,6 +149,31 @@ def pagar_pendiente(
     session.add(pago)
     session.commit()
     session.refresh(pago)
+
+    # Cambia el estado de la inscripción a 1 (pagada/activa)
+    inscripcion.estado = 1
+    inscripcion.modificado_por = creado_por
+    inscripcion.fecha_modificacion = datetime.utcnow()
+    session.add(inscripcion)
+
+    session.commit()
+    session.refresh(pago)
+
+    # Registrar la relación solo si no existe ya
+    existe_relacion = session.exec(
+        select(ClienteXComunidad).where(
+            ClienteXComunidad.id_cliente == id_cliente,
+            ClienteXComunidad.id_comunidad == id_comunidad
+        )
+    ).first()
+    if not existe_relacion:
+        relacion = ClienteXComunidad(
+            id_cliente=id_cliente,
+            id_comunidad=id_comunidad
+        )
+        session.add(relacion)
+        session.commit()
+        session.refresh(relacion)
 
     # Registrar el detalle de la inscripción si el plan tiene topes y no existe detalle
     plan = session.get(Plan, inscripcion.id_plan)
