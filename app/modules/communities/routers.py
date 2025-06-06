@@ -2,6 +2,8 @@ import traceback
 from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
 from sqlmodel import Session, select
 from app.core.db import get_session
+from app.modules.auth.dependencies import get_current_cliente_id
+from app.modules.billing.models import Inscripcion
 from app.modules.communities.models import Comunidad
 from app.modules.communities.schemas import ComunidadOut, ComunidadRead
 from typing import List, Optional
@@ -117,3 +119,46 @@ def comunidades_con_servicios(session: Session = Depends(get_session)):
 @router.get("/comunidades-con-servicios_sinImagen")
 def comunidades_con_servicios_sinImagen(session: Session = Depends(get_session)):
     return get_comunidades_con_servicios_sin_imagen(session)
+
+#Endpoint para obtener una comunidad por ID
+@router.get("/comunidad/{id_comunidad}", response_model=ComunidadRead)
+def obtener_comunidad_por_id(
+    id_comunidad: int,
+    session: Session = Depends(get_session)
+):
+    comunidad = session.exec(
+        select(Comunidad).where(Comunidad.id_comunidad == id_comunidad, Comunidad.estado == True)
+    ).first()
+
+    if not comunidad:
+        logger.warning(f"Comunidad con ID {id_comunidad} no encontrada o inactiva")
+        raise HTTPException(status_code=404, detail="Comunidad no encontrada o inactiva")
+
+    comunidad_dict = comunidad.__dict__.copy()
+    if comunidad_dict.get("imagen"):
+        comunidad_dict["imagen"] = base64.b64encode(comunidad_dict["imagen"]).decode("utf-8")
+
+    return ComunidadOut(**comunidad_dict)
+
+
+@router.get("/comunidades-sin-inscripcion", response_model=List[ComunidadRead])
+def comunidades_sin_inscripcion(
+    session: Session = Depends(get_session),
+    id_cliente: int = Depends(get_current_cliente_id)
+):
+    try:
+        # IDs de comunidades donde el usuario ya está inscrito
+        subquery = select(Inscripcion.id_comunidad).where(Inscripcion.id_cliente == id_cliente)
+        # Comunidades activas donde el usuario NO está inscrito
+        comunidades = session.exec(
+            select(Comunidad)
+            .where(
+                Comunidad.estado == True,
+                Comunidad.id_comunidad.not_in(subquery) # type: ignore
+            )
+        ).all()
+        response = [ComunidadRead.from_orm_with_base64(c) for c in comunidades]
+        return response
+    except Exception as e:
+        logger.error(f"❌ Error al obtener comunidades sin inscripción: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error al obtener comunidades sin inscripción")

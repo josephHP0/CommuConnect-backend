@@ -10,8 +10,10 @@ from passlib.context import CryptContext
 from app.modules.communities.schemas import ComunidadContexto
 from app.modules.services.schemas import ServicioResumen
 from app.modules.communities.services import obtener_servicios_de_comunidad
-from typing import List, Optional
+from typing import List, Optional, Dict
 from app.modules.communities.models import ClienteXComunidad, Comunidad
+from app.modules.billing.models import Inscripcion
+import base64
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -25,7 +27,7 @@ def crear_usuario(db: Session, usuario: UsuarioCreate):
         password=hashed_password,
         tipo=usuario.tipo, # type: ignore
         creado_por="sistema",
-        estado=False
+        estado=True
     )
     db.add(db_usuario)
     db.commit()
@@ -38,7 +40,7 @@ def crear_cliente(db: Session, cliente: ClienteCreate, bg: BackgroundTasks):
         apellido=cliente.apellido,
         email=cliente.email,
         password=cliente.password,
-        tipo=TipoUsuario.Cliente
+        tipo=TipoUsuario.Cliente,
     )
     nuevo_usuario = crear_usuario(db, usuario_data)
 
@@ -148,10 +150,24 @@ def obtener_comunidades_del_cliente(session: Session, id_cliente: int) -> List[C
     return comunidades # type: ignore
 
 
+def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int) -> str:
+    inscripcion = session.exec(
+        select(Inscripcion).where(
+            Inscripcion.id_cliente == id_cliente,
+            Inscripcion.id_comunidad == id_comunidad,
+            Inscripcion.estado == 1
+        )
+    ).first()
 
+    return "activa" if inscripcion else "inactiva"
 
-def construir_respuesta_contexto(session: Session, comunidades: List[Comunidad]) -> List[ComunidadContexto]:
+def construir_respuesta_contexto(
+    session: Session,
+    comunidades: List[Comunidad],
+    id_cliente: int
+) -> List[ComunidadContexto]:
     respuesta = []
+
     for comunidad in comunidades:
         print(f"Procesando comunidad ID {comunidad.id_comunidad}: {comunidad.nombre}")
 
@@ -161,9 +177,13 @@ def construir_respuesta_contexto(session: Session, comunidades: List[Comunidad])
 
             servicios_resumen = [ServicioResumen(nombre=s.nombre) for s in servicios]
 
+            # 🔹 Determinar el estado de membresía individualmente
+            estado = tiene_membresia_activa(session, id_cliente, comunidad.id_comunidad) # type: ignore
+
             comunidad_contexto = ComunidadContexto.from_orm_with_base64(
                 comunidad=comunidad,
-                servicios=servicios_resumen
+                servicios=servicios_resumen,
+                estado_membresia=estado
             )
             respuesta.append(comunidad_contexto)
 

@@ -1,19 +1,34 @@
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
 from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id
 from app.modules.communities.services import unir_cliente_a_comunidad
-from app.modules.users.schemas import AdministradorCreate, AdministradorRead, ClienteCreate, ClienteRead, UsuarioCreate, UsuarioRead,UsuarioBase
+from app.modules.users.schemas import AdministradorCreate, AdministradorRead, ClienteCreate, ClienteRead, ClienteUpdate, UsuarioCreate, UsuarioRead,UsuarioBase
 from app.modules.users.services import crear_administrador, crear_cliente, crear_usuario, reenviar_confirmacion
 from app.modules.users.dependencies import get_current_admin
 from app.core.logger import logger
 from typing import List
-from app.modules.users.models import Usuario
+from app.modules.users.models import Cliente, Usuario
 from app.core.enums import TipoUsuario
-from app.core.security import verify_confirmation_token
+from app.core.security import hash_password, verify_confirmation_token
 from app.modules.communities.schemas import ComunidadContexto
 from app.modules.auth.dependencies import get_current_user
 from app.modules.users.services import obtener_cliente_desde_usuario, obtener_comunidades_del_cliente, construir_respuesta_contexto
+from app.modules.communities.models import Comunidad
+from app.modules.communities.services import (
+    obtener_comunidad_con_imagen_base64,
+    obtener_servicios_con_imagen_base64
+)
+from app.modules.communities.schemas import ComunidadDetalleOut
+from app.modules.billing.schemas import UsoTopesOut
+from app.modules.billing.services import (
+    obtener_inscripcion_activa,
+    es_plan_con_topes,
+    obtener_detalle_topes
+    )
+
+
 
 router = APIRouter()
 
@@ -75,22 +90,20 @@ def registrar_administrador(administrador: AdministradorCreate, db: Session = De
         logger.error(f"Error al registrar administrador {administrador.email}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error al registrar administrador")
 
-
+#Endpoint para listar todos los clientes
 @router.get(
     "/clientes",
     response_model=List[UsuarioBase],
-    summary="Listado de clientes (solo administradores)"
+    summary="Listado de clientes"
 )
 def listar_clientes(
-    session: Session = Depends(get_session),
-    current_admin=Depends(get_current_admin),
+    session: Session = Depends(get_session)
 ):
     """
     Devuelve todos los usuarios cuyo tipo sea 'Cliente'.
-    Acceso restringido a administradores.
     """
     clientes = session.exec(
-        select(Usuario).where(Usuario.tipo == TipoUsuario.Cliente)
+        select(Usuario).where(Usuario.tipo == TipoUsuario.Cliente, Usuario.estado == True)  # Solo clientes activos
     ).all()
     return clientes
 
@@ -105,7 +118,7 @@ def unir_cliente_comunidad(
 
 
 
-@router.get("/api/usuarios/usuario/comunidades", response_model=List[ComunidadContexto])
+@router.get("/usuario/comunidades", response_model=List[ComunidadContexto])
 def listar_comunidades_usuario(
     session: Session = Depends(get_session),
     current_user: Usuario = Depends(get_current_user)
@@ -146,7 +159,7 @@ def listar_comunidades_usuario(
         # Paso 3: construir respuesta final con servicios
         try:
             print("Construyendo respuesta final con servicios...")
-            respuesta = construir_respuesta_contexto(session, comunidades)
+            respuesta = construir_respuesta_contexto(session, comunidades,cliente.id_cliente) # type: ignore
             print(" Respuesta construida correctamente.")
         except HTTPException as e:
             print(f" Error HTTP al construir respuesta: {e.detail}")
@@ -167,3 +180,134 @@ def listar_comunidades_usuario(
         print(f" Excepción general capturada: {e}")
         raise HTTPException(status_code=500, detail=f"[general] Error inesperado: {str(e)}")
 
+
+
+@router.get("/usuario/comunidad/{id_comunidad}")
+def obtener_comunidad_detalle(
+    id_comunidad: int,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    comunidad, imagen_base64 = obtener_comunidad_con_imagen_base64(session, id_comunidad)
+    servicios_out = obtener_servicios_con_imagen_base64(session, id_comunidad)
+
+    return ComunidadDetalleOut(
+        id_comunidad=comunidad.id_comunidad, # type: ignore
+        nombre=comunidad.nombre,
+        slogan=comunidad.slogan,  # Usado como texto descriptivo
+        imagen=imagen_base64,
+        servicios=servicios_out
+    )
+
+
+@router.get("/usuario/comunidad/{id_comunidad}/topes", response_model=UsoTopesOut)
+def obtener_uso_topes(
+    id_comunidad: int,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    cliente = obtener_cliente_desde_usuario(session, current_user)
+    id_cliente = cliente.id_cliente
+
+    inscripcion = obtener_inscripcion_activa(session, id_cliente, id_comunidad) # type: ignore
+
+    if not es_plan_con_topes(session, inscripcion.id_inscripcion): # type: ignore
+        return UsoTopesOut(estado="Ilimitado")
+
+    detalle = obtener_detalle_topes(session, inscripcion.id_inscripcion) # type: ignore
+    topes_disponibles = detalle["topes_disponibles"]
+    topes_consumidos = detalle["topes_consumidos"]
+    total = topes_disponibles + topes_consumidos
+
+    return UsoTopesOut(
+        plan="Plan por Topes",
+        topes_disponibles=topes_disponibles,
+        topes_consumidos=topes_consumidos,
+        estado=f"Restan {topes_disponibles} de {total}"
+    )
+
+
+
+#Endpoint para eliminar cliente logicamente (solo administradores)
+@router.delete("/eliminar_cliente/{id_cliente}")
+def eliminar_cliente(
+    id_cliente: int,
+    session: Session = Depends(get_session),
+    current_admin=Depends(get_current_admin)
+):
+    """
+    Elimina un cliente de forma lógica (cambia su estado a inactivo).
+    Solo accesible para administradores.
+    """
+    try:
+        cliente = session.exec(
+            select(Cliente).where(Cliente.id_cliente == id_cliente)
+        ).first()
+        
+        if not cliente or not cliente.usuario:
+            raise HTTPException(status_code=404, detail="Cliente o usuario no encontrado")
+
+        cliente.usuario.estado = False
+        cliente.usuario.fecha_modificacion = datetime.utcnow()
+        cliente.usuario.modificado_por = current_admin.email
+
+        session.add(cliente.usuario)
+        session.commit()
+        session.refresh(cliente.usuario)
+
+        logger.info(f"Cliente {cliente.usuario.email} eliminado lógicamente por {current_admin.email}")
+        return {"message": "Cliente eliminado lógicamente"}
+    
+    except HTTPException as e:
+        raise e
+    
+
+    
+#Endpoint para modificar cliente
+@router.put("/modificar_cliente/{id_cliente}", response_model=ClienteRead)
+def modificar_cliente(
+    id_cliente: int,
+    cliente_data: ClienteUpdate,
+    session: Session = Depends(get_session),
+    current_admin=Depends(get_current_admin)
+):
+    """
+    Modifica los datos de un cliente.
+    Solo accesible para administradores.
+    """
+    try:
+        cliente = session.exec(
+            select(Cliente).where(Cliente.id_cliente == id_cliente)
+        ).first()
+        
+        if not cliente:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+        # Actualiza campos de Cliente
+        data = cliente_data.dict(exclude_unset=True)
+        password = data.pop("password", None)
+
+        usuario_fields = {"nombre", "apellido", "email"}
+        for key, value in data.items():
+            if key in usuario_fields:
+                setattr(cliente.usuario, key, value)
+            else:
+                setattr(cliente, key, value)
+
+        # Actualiza contraseña si corresponde
+        if password:
+            cliente.usuario.password = hash_password(password) # type: ignore
+
+        # Auditoría
+        cliente.usuario.fecha_modificacion = datetime.utcnow() # type: ignore
+        cliente.usuario.modificado_por = current_admin.email # type: ignore
+
+        session.add(cliente)
+        session.commit()
+        session.refresh(cliente)
+
+        logger.info(f"Cliente {cliente.usuario.email} modificado por {current_admin.email}") # type: ignore
+        return ClienteRead.from_orm(cliente)
+
+    except HTTPException as e:
+        raise e

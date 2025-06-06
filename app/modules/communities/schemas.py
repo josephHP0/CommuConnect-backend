@@ -4,7 +4,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 from app.modules.services.schemas import ServicioResumen
 from typing import List, Optional
-
+from app.modules.services.schemas import ServicioOut
 
 class ComunidadCreate(BaseModel):
     nombre: str
@@ -38,8 +38,8 @@ class ComunidadOut(BaseModel):
     imagen: Optional[str] = None
     fecha_creacion: datetime
     creado_por: str
-    fecha_modificacion: datetime
-    modificado_por: str
+    fecha_modificacion: Optional[datetime] = None  # <-- Permitir None
+    modificado_por: Optional[str] = None           # <-- Permitir None
     estado: int
 
     model_config = ConfigDict(from_attributes=True)
@@ -50,16 +50,25 @@ class ComunidadContexto(BaseModel):
     nombre: str
     slogan: Optional[str] = None
     imagen: Optional[str] = None  # Codificada en base64 para frontend
-    servicios: Optional[List[ServicioResumen]] = []
+    servicios: Optional[List[ServicioResumen]] = [] 
+    estado_membresia: Optional[str] = None  # 'activa' o 'inactiva'
 
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
-    def from_orm_with_base64(cls, comunidad, servicios=None):
+    def from_orm_with_base64(cls, comunidad, servicios=None, estado_membresia=None):
         data = comunidad.__dict__.copy()
         if comunidad.imagen:
             data["imagen"] = base64.b64encode(comunidad.imagen).decode("utf-8")
         if servicios is not None:
             data["servicios"] = servicios
+        data["estado_membresia"] = estado_membresia or "inactiva"
         return cls(**data)
-    
+
+
+class ComunidadDetalleOut(BaseModel):
+    id_comunidad: int
+    nombre: str
+    slogan: Optional[str] = None  # Aquí se usará como descripción
+    imagen: Optional[str] = None  # base64
+    servicios: List[ServicioOut]
