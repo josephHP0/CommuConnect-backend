@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from datetime import date,time
 from pydantic import BaseModel
 
@@ -16,11 +16,13 @@ class HorasPresencialesResponse(BaseModel):
 
 
 class SesionPresencialOut(BaseModel):
+    id_sesion: int
+    id_sesion_presencial: int
     fecha: date
     ubicacion: str           # Ejemplo: "La Tiendita (San Miguel)"
-    responsable: str         # El campo creado_por de SesionPresencial o de Sesion
-    hora_inicio: time
-    hora_fin: time
+    responsable: Optional[str]         # El campo creado_por de SesionPresencial o de Sesion
+    hora_inicio: str
+    hora_fin: str
     vacantes_totales: int
     vacantes_libres: int
 
