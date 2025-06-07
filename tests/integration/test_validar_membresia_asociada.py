@@ -1,10 +1,12 @@
+# tests/integration/test_validar_membresia_asociada.py
+
 import os
 import sys
 import json
 import pytest
 from fastapi.testclient import TestClient
 
-# Agrega la raíz del proyecto al path para importar correctamente
+# Agrega la raíz del proyecto al path
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
@@ -13,11 +15,12 @@ from app.main import app
 
 client = TestClient(app)
 
-# Credenciales válidas de un cliente cuyo id_cliente = 17 (usuario mr@cc.com)
+# Credenciales válidas
 LOGIN_DATA = {
-    "email": "gianfranco.mpc@gmail.com",
+    "email": "cr@cc.com",  # Asegúrate de que tiene una inscripción activa / si tiene: mr@cc.com
     "password": "1234"
 }
+
 
 @pytest.fixture
 def auth_headers():
@@ -26,21 +29,14 @@ def auth_headers():
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
-def test_obtener_uso_topes_cliente17(auth_headers):
-    id_comunidad = 3  # Confirmado que el cliente tiene inscripción activa
+def test_validar_membresia_asociada(auth_headers):
+    response = client.get("/api/billing/usuario/validar-membresia-asociada", headers=auth_headers)
 
-    response = client.get(f"/api/usuarios/usuario/comunidad/{id_comunidad}/topes", headers=auth_headers)
-    
     assert response.status_code == 200, f"Error HTTP: {response.text}"
 
     data = response.json()
-
-    print("\nRespuesta del endpoint /usuario/comunidad/{id_comunidad}/topes:")
+    print("\nRespuesta del endpoint /api/billing/usuario/validar-membresia-asociada:")
     print(json.dumps(data, indent=2))
 
-    # Validaciones dinámicas mínimas
-    assert "estado" in data
-    assert "plan" in data
-    if data["plan"] == "Plan por Topes":
-        assert "topes_disponibles" in data
-        assert "topes_consumidos" in data
+    assert "tieneMembresiaAsociada" in data, "Falta la clave 'tieneMembresiaAsociada'"
+    assert isinstance(data["tieneMembresiaAsociada"], bool), "'tieneMembresiaAsociada' debe ser booleano"

@@ -50,3 +50,19 @@ class DetalleInscripcionOut(DetalleInscripcionBase):
 
     class Config:
         orm_mode = True
+
+
+class MembresiaAsociadaOut(BaseModel):
+    tieneMembresiaAsociada: bool
+
+    class Config:
+        orm_mode = True
+
+class ValidacionMembresiaOut(BaseModel):
+    tieneMembresiaActiva: bool
+
+class TieneTopesOut(BaseModel):
+    tieneTopes: bool
+
+class EsPlanConTopesOut(BaseModel):
+    esPlanConTopes: bool

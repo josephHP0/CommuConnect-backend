@@ -10,6 +10,8 @@ from datetime import datetime
 from app.core.enums import MetodoPago
 from .models import Inscripcion, Pago, Plan, DetalleInscripcion
 
+
+
 def get_planes(session: Session):
     planes = session.exec(select(Plan)).all()
     # Solo devuelve los campos del schema PlanOut
@@ -278,3 +280,43 @@ def crear_detalle_inscripcion(
     session.commit()
     session.refresh(detalle)
     return detalle
+
+
+def tiene_membresia_asociada(
+    session: Session,
+    cliente_id: int
+) -> bool:
+    """
+    Retorna True si el cliente tiene al menos una inscripción
+    activa (estado = 1) en cualquier comunidad.
+    """
+    stmt = (
+        select(Inscripcion)
+        .where(
+            Inscripcion.id_cliente == cliente_id,
+            Inscripcion.estado     == 1
+        )
+    )
+    return session.exec(stmt).first() is not None
+
+
+def tiene_membresia_activa_en_comunidad(session: Session, cliente_id: int, id_comunidad: int) -> bool:
+    inscripcion = session.exec(
+        select(Inscripcion).where(
+            Inscripcion.id_cliente == cliente_id,
+            Inscripcion.id_comunidad == id_comunidad,
+            Inscripcion.estado == 1  # Activa
+        )
+    ).first()
+
+    return bool(inscripcion)
+
+
+def tiene_topes_disponibles(session: Session, id_cliente: int, id_comunidad: int) -> bool:
+    inscripcion = obtener_inscripcion_activa(session, id_cliente, id_comunidad)
+
+    if not es_plan_con_topes(session, inscripcion.id_inscripcion):
+        return True  # Plan ilimitado, puede reservar sin topes
+
+    detalle = obtener_detalle_topes(session, inscripcion.id_inscripcion)
+    return detalle["topes_disponibles"] > 0

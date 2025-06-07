@@ -7,6 +7,14 @@ from app.modules.communities.models import ComunidadXPlan
 from .services import crear_inscripcion, crear_pago_pendiente, get_planes, pagar_pendiente
 from .schemas import DetalleInscripcionOut, PlanOut
 from typing import List, Optional
+from app.modules.billing.services import tiene_membresia_asociada
+from app.modules.billing.schemas import MembresiaAsociadaOut
+from app.modules.billing.services import tiene_membresia_activa_en_comunidad
+from app.modules.billing.schemas import ValidacionMembresiaOut
+from app.modules.billing.services import tiene_topes_disponibles
+from app.modules.billing.schemas import TieneTopesOut
+from app.modules.billing.services import es_plan_con_topes
+from app.modules.billing.schemas import EsPlanConTopesOut
 
 router = APIRouter()
 
@@ -74,3 +82,50 @@ def pagar_comunidad(
     )
     return {"ok": True, "message": "Pago realizado exitosamente"}
 
+#Este endpoint es útil para saber rápidamente si un cliente ya está inscrito 
+#activamente en alguna comunidad. Ideal para validar antes de mostrar contenido exclusivo,
+#planes, reservas, etc.
+@router.get("/usuario/validar-membresia-asociada", response_model=MembresiaAsociadaOut)
+def validar_membresia_asociada(
+    session: Session        = Depends(get_session),
+    cliente_id: int         = Depends(get_current_cliente_id),
+):
+    ok = tiene_membresia_asociada(session, cliente_id)
+    return MembresiaAsociadaOut(tieneMembresiaAsociada=ok)
+
+
+"""Este endpoint GET /usuario/validar-membresia/{id_comunidad} verifica si el 
+cliente autenticado tiene una membresía activa en una comunidad específica. 
+Utiliza su id_cliente (extraído del token JWT) y el id_comunidad del path. 
+Consulta la base de datos y devuelve un JSON con el resultado:
+json: { "tieneMembresiaActiva": true | false }
+Solo retorna true si existe una inscripción activa (estado = 1) para ese cliente en esa comunidad.
+"""
+
+@router.get("/usuario/validar-membresia/{id_comunidad}", response_model=ValidacionMembresiaOut)
+def validar_membresia_por_comunidad(
+    id_comunidad: int,
+    session: Session = Depends(get_session),
+    cliente_id: int = Depends(get_current_cliente_id),
+):
+    tiene_membresia = tiene_membresia_activa_en_comunidad(session, cliente_id, id_comunidad)
+    return ValidacionMembresiaOut(tieneMembresiaActiva=tiene_membresia)
+
+
+@router.get("/usuario/comunidad/{id_comunidad}/tiene-topes", response_model=TieneTopesOut)
+def validar_tiene_topes(
+    id_comunidad: int,
+    session: Session = Depends(get_session),
+    cliente_id: int = Depends(get_current_cliente_id),
+):
+    tiene = tiene_topes_disponibles(session, cliente_id, id_comunidad)
+    return TieneTopesOut(tieneTopes=tiene)
+
+
+@router.get("/usuario/plan/{id_inscripcion}/es-con-topes", response_model=EsPlanConTopesOut)
+def validar_si_plan_es_con_topes(
+    id_inscripcion: int,
+    session: Session = Depends(get_session)
+):
+    resultado = es_plan_con_topes(session, id_inscripcion)
+    return EsPlanConTopesOut(esPlanConTopes=resultado)
