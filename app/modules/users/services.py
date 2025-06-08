@@ -1,7 +1,7 @@
 from sqlmodel import Session, select
 from app.core.enums import TipoUsuario
 from app.modules.users.models import Administrador, Usuario, Cliente
-from app.modules.users.schemas import ClienteCreate, UsuarioBase, UsuarioCreate, AdministradorCreate
+from app.modules.users.schemas import ClienteCreate, ClienteUpdate, UsuarioBase, UsuarioCreate, AdministradorCreate
 from app.core.security import hash_password,create_confirmation_token
 from utils.email_brevo import send_confirmation_email
 from fastapi import HTTPException, status, BackgroundTasks
@@ -196,3 +196,44 @@ def construir_respuesta_contexto(
 
     return respuesta
 
+
+def modificar_cliente(db: Session, id_usuario: int, data: dict, current_admin):
+    cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
+
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    usuario = db.get(Usuario, id_usuario)
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    password = data.pop("password", None)
+
+    for campo, valor in data.items():
+        if valor is not None:
+            if hasattr(usuario, campo):
+                setattr(usuario, campo, valor)
+            elif hasattr(cliente, campo):
+                setattr(cliente, campo, valor)
+
+
+    if password:
+        usuario.password = hash_password(password)
+
+    usuario.fecha_modificacion = datetime.utcnow()
+    usuario.modificado_por = current_admin.email
+
+    db.commit()
+    db.refresh(cliente)
+    return cliente
+
+
+def obtener_cliente_con_usuario_por_id(db: Session, id_cliente: int):
+    cliente = db.exec(
+        select(Cliente).where(Cliente.id_cliente == id_cliente)
+    ).first()
+
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    return cliente

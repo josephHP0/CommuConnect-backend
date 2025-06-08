@@ -3,6 +3,9 @@ from typing import Optional
 from datetime import datetime, date
 
 from app.core.enums import TipoDocumento, TipoUsuario
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from app.modules.geography.models import Distrito, Departamento
 
 class Usuario(SQLModel, table=True):
     __tablename__ = "usuario" # type: ignore
@@ -34,8 +37,8 @@ class Cliente(SQLModel, table=True):
     tipo_documento: TipoDocumento = Field(max_length=20)
     num_doc: str = Field(max_length=45, unique=True)
     numero_telefono: str = Field(max_length=45)
-    id_departamento: int
-    id_distrito: int
+    id_departamento: int = Field(foreign_key="departamento.id_departamento")
+    id_distrito: int = Field(foreign_key="distrito.id_distrito")
     direccion: Optional[str] = Field(default=None, max_length=350)
     fecha_nac: Optional[date] = None
     genero: Optional[str] = Field(default=None, max_length=45)
@@ -43,5 +46,7 @@ class Cliente(SQLModel, table=True):
     peso: int
 
     usuario: Optional[Usuario] = Relationship(back_populates="cliente")
+    distrito: Optional["Distrito"] = Relationship(back_populates="clientes")
+    departamento: Optional["Departamento"] = Relationship(back_populates="clientes")
 
 

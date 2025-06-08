@@ -1,14 +1,14 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
+from fastapi import APIRouter, Depends, Form, HTTPException, BackgroundTasks, status
 from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id
 from app.modules.communities.services import unir_cliente_a_comunidad
-from app.modules.users.schemas import AdministradorCreate, AdministradorRead, ClienteCreate, ClienteRead, ClienteUpdate, UsuarioCreate, UsuarioRead,UsuarioBase
-from app.modules.users.services import crear_administrador, crear_cliente, crear_usuario, reenviar_confirmacion
+from app.modules.users.schemas import AdministradorCreate, AdministradorRead, ClienteCreate, ClienteRead, ClienteUpdate, ClienteUsuarioFull, UsuarioClienteFull , UsuarioCreate, UsuarioRead,UsuarioBase
+from app.modules.users.services import crear_administrador, crear_cliente, crear_usuario, modificar_cliente, obtener_cliente_con_usuario_por_id, reenviar_confirmacion
 from app.modules.users.dependencies import get_current_admin
 from app.core.logger import logger
-from typing import List
+from typing import List, Optional
 from app.modules.users.models import Cliente, Usuario
 from app.core.enums import TipoUsuario
 from app.core.security import hash_password, verify_confirmation_token
@@ -43,14 +43,16 @@ def registrar_usuario(usuario: UsuarioCreate, db: Session = Depends(get_session)
         raise HTTPException(status_code=500, detail=f"Error al registrar usuario")
 
 @router.post("/cliente", response_model=ClienteRead)
-def registrar_cliente(cliente: ClienteCreate,  bg: BackgroundTasks, db: Session = Depends(get_session)):
+def registrar_cliente(cliente: ClienteCreate, bg: BackgroundTasks, db: Session = Depends(get_session)):
     try:
         nuevo_cliente = crear_cliente(db, cliente, bg)
         logger.info(f"Cliente registrado: {cliente.email}")
         return nuevo_cliente
-    except Exception as e:  # TEMPORAL para ver en consola
-        logger.error(f"Error al registrar cliente {cliente.email}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error al registrar cliente")
+    except Exception as e:
+        logger.error(f"Error al registrar cliente {cliente.email}", exc_info=True)
+        print(">>> ERROR DETECTADO <<<")
+        print(e)
+        raise HTTPException(status_code=500, detail="Error al registrar cliente")
 
 @router.get("/confirm/{token}", response_model=UsuarioRead)
 def confirmar_email(token: str, db: Session = Depends(get_session)):
@@ -91,19 +93,13 @@ def registrar_administrador(administrador: AdministradorCreate, db: Session = De
         raise HTTPException(status_code=500, detail=f"Error al registrar administrador")
 
 #Endpoint para listar todos los clientes
-@router.get(
-    "/clientes",
-    response_model=List[UsuarioBase],
-    summary="Listado de clientes"
-)
-def listar_clientes(
-    session: Session = Depends(get_session)
-):
-    """
-    Devuelve todos los usuarios cuyo tipo sea 'Cliente'.
-    """
+@router.get("/clientes", response_model=List[UsuarioClienteFull])
+def listar_clientes(session: Session = Depends(get_session)):
     clientes = session.exec(
-        select(Usuario).where(Usuario.tipo == TipoUsuario.Cliente, Usuario.estado == True)  # Solo clientes activos
+        select(Usuario).where(
+            Usuario.tipo == TipoUsuario.Cliente,
+            Usuario.estado == True
+        )
     ).all()
     return clientes
 
@@ -263,51 +259,54 @@ def eliminar_cliente(
     
 
     
-#Endpoint para modificar cliente
-@router.put("/modificar_cliente/{id_cliente}", response_model=ClienteRead)
-def modificar_cliente(
-    id_cliente: int,
-    cliente_data: ClienteUpdate,
-    session: Session = Depends(get_session),
-    current_admin=Depends(get_current_admin)
+@router.put("/cliente/{id_usuario}", response_model=ClienteRead)
+def actualizar_cliente(
+    id_usuario: int,
+    nombre: Optional[str] = Form(None),
+    apellido: Optional[str] = Form(None),
+    email: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
+    tipo_documento: Optional[str] = Form(None),
+    num_doc: Optional[str] = Form(None),
+    numero_telefono: Optional[str] = Form(None),
+    id_departamento: Optional[int] = Form(None),
+    id_distrito: Optional[int] = Form(None),
+    direccion: Optional[str] = Form(None),
+    fecha_nac: Optional[str] = Form(None),
+    genero: Optional[str] = Form(None),
+    talla: Optional[float] = Form(None),
+    peso: Optional[float] = Form(None),
+    db: Session = Depends(get_session),
+    current_admin: Usuario = Depends(get_current_admin)
 ):
-    """
-    Modifica los datos de un cliente.
-    Solo accesible para administradores.
-    """
     try:
-        cliente = session.exec(
-            select(Cliente).where(Cliente.id_cliente == id_cliente)
-        ).first()
-        
-        if not cliente:
-            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+        data = {
+            "nombre": nombre,
+            "apellido": apellido,
+            "email": email,
+            "password": password,
+            "tipo_documento": tipo_documento,
+            "num_doc": num_doc,
+            "numero_telefono": numero_telefono,
+            "id_departamento": id_departamento,
+            "id_distrito": id_distrito,
+            "direccion": direccion,
+            "fecha_nac": fecha_nac,
+            "genero": genero,
+            "talla": talla,
+            "peso": peso
+        }
 
-        # Actualiza campos de Cliente
-        data = cliente_data.dict(exclude_unset=True)
-        password = data.pop("password", None)
-
-        usuario_fields = {"nombre", "apellido", "email"}
-        for key, value in data.items():
-            if key in usuario_fields:
-                setattr(cliente.usuario, key, value)
-            else:
-                setattr(cliente, key, value)
-
-        # Actualiza contraseña si corresponde
-        if password:
-            cliente.usuario.password = hash_password(password) # type: ignore
-
-        # Auditoría
-        cliente.usuario.fecha_modificacion = datetime.utcnow() # type: ignore
-        cliente.usuario.modificado_por = current_admin.email # type: ignore
-
-        session.add(cliente)
-        session.commit()
-        session.refresh(cliente)
-
-        logger.info(f"Cliente {cliente.usuario.email} modificado por {current_admin.email}") # type: ignore
-        return ClienteRead.from_orm(cliente)
-
+        return modificar_cliente(db, id_usuario, data, current_admin)
     except HTTPException as e:
         raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al actualizar cliente: {str(e)}")
+
+@router.get("/cliente/id/{id_cliente}", response_model=ClienteUsuarioFull)
+def obtener_cliente_por_id_cliente(
+    id_cliente: int,
+    db: Session = Depends(get_session)
+):
+    return obtener_cliente_con_usuario_por_id(db, id_cliente)
+
