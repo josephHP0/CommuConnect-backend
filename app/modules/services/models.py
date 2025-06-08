@@ -1,6 +1,7 @@
 from sqlmodel import SQLModel, Field, Relationship
 from typing import Optional, ClassVar, TYPE_CHECKING, List
 from datetime import datetime
+from app.core.enums import ModalidadServicio
 
 class ComunidadXServicio(SQLModel, table=True):
     __tablename__: ClassVar[str] = "comunidadxservicio" # type: ignore[assignment]
@@ -12,7 +13,7 @@ class Servicio(SQLModel, table=True):
     nombre: str = Field(max_length=100)
     descripcion: Optional[str] = Field(default=None, max_length=100)
     imagen: Optional[bytes] = None
-    modalidad: str = Field(max_length=10)  # Enum: 'Virtual' o 'Presencial'
+    modalidad: ModalidadServicio  # Enum: 'Virtual' o 'Presencial'
     fecha_creacion: datetime
     creado_por: str = Field(max_length=50)
     fecha_modificacion: Optional[datetime] = None
@@ -56,3 +57,4 @@ class Profesional(SQLModel, table=True):
 
     # Relación inversa con Servicio
     servicio: Optional["Servicio"] = Relationship(back_populates="profesionales")
+

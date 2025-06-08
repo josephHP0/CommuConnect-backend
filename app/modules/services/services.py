@@ -1,10 +1,12 @@
+from datetime import datetime, timezone
+from fastapi import HTTPException, UploadFile
 from sqlmodel import Session, select
 from app.modules.services.models import Servicio, Profesional
 from app.modules.reservations.models import SesionVirtual,Sesion
-from typing import List
+from typing import List, Optional
 from app.modules.geography.models import Distrito  # Modelo de geografía
 from app.modules.services.models import Local      # Modelo Local dentro de services
-from app.modules.services.schemas import DistritoOut  # Esquema de salida (DTO)
+from app.modules.services.schemas import DistritoOut, ServicioCreate, ServicioRead, ServicioUpdate  # Esquema de salida (DTO)
 import base64
 
 def obtener_servicios_por_ids(session: Session, servicio_ids: List[int]):
@@ -62,3 +64,103 @@ def obtener_distritos_por_servicio_service(session: Session, id_servicio: int) -
         ))
 
     return resultado
+
+
+def listar_servicios(db: Session) -> list[ServicioRead]:
+    servicios = db.exec(select(Servicio)).all()
+    resultado = []
+    for servicio in servicios:
+        servicio_dict = servicio.dict()
+        if servicio.imagen:
+            servicio_dict["imagen_base64"] = base64.b64encode(servicio.imagen).decode("utf-8")
+        else:
+            servicio_dict["imagen_base64"] = None
+        resultado.append(ServicioRead(**servicio_dict))
+    return resultado
+
+
+def crear_servicio(
+    db: Session,
+    servicio_data: ServicioCreate,
+    archivo_imagen: UploadFile,
+    usuario: str = "admin"
+):
+    contenido_imagen = archivo_imagen.file.read() if archivo_imagen else None
+
+    nuevo_servicio = Servicio(
+        nombre=servicio_data.nombre,
+        descripcion=servicio_data.descripcion,
+        modalidad=servicio_data.modalidad,
+        imagen=contenido_imagen,
+        fecha_creacion=datetime.utcnow(),
+        creado_por=usuario,
+        estado=True,
+    )
+
+    db.add(nuevo_servicio)
+    db.commit()
+    db.refresh(nuevo_servicio)
+    return nuevo_servicio
+
+def eliminar_servicio(db: Session, id_servicio: int, usuario: str = "admin"):
+    servicio = db.get(Servicio, id_servicio)
+    if not servicio:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+
+    servicio.estado = False
+    servicio.fecha_modificacion = datetime.now(timezone.utc)
+    servicio.modificado_por = usuario
+
+    db.add(servicio)
+    db.commit()
+
+def actualizar_servicio(
+    db: Session,
+    id_servicio: int,
+    datos: ServicioUpdate,
+    imagen: Optional[UploadFile] = None,
+    usuario: str = "admin"
+):
+    servicio = db.get(Servicio, id_servicio)
+    if not servicio:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+
+    if datos.nombre is not None:
+        servicio.nombre = datos.nombre
+    if datos.descripcion is not None:
+        servicio.descripcion = datos.descripcion
+    if datos.modalidad is not None:
+        servicio.modalidad = datos.modalidad
+    if imagen is not None:
+        servicio.imagen = imagen.file.read()
+
+    servicio.fecha_modificacion = datetime.now(timezone.utc)
+    servicio.modificado_por = usuario
+
+    db.add(servicio)
+    db.commit()
+    db.refresh(servicio)
+    return servicio
+
+def obtener_servicio_por_id(db: Session, id_servicio: int) -> ServicioRead:
+    servicio = db.get(Servicio, id_servicio)
+    if not servicio or not servicio.estado:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+
+    imagen_base64 = (
+        base64.b64encode(servicio.imagen).decode("utf-8")
+        if servicio.imagen else None
+    )
+
+    return ServicioRead(
+        id_servicio=servicio.id_servicio,
+        nombre=servicio.nombre,
+        descripcion=servicio.descripcion,
+        modalidad=servicio.modalidad,
+        imagen_base64=imagen_base64,
+        fecha_creacion=servicio.fecha_creacion,
+        creado_por=servicio.creado_por,
+        fecha_modificacion=servicio.fecha_modificacion,
+        modificado_por=servicio.modificado_por,
+        estado=servicio.estado
+    )
