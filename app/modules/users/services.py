@@ -4,7 +4,7 @@ from app.modules.users.models import Administrador, Usuario, Cliente
 from app.modules.users.schemas import ClienteCreate, ClienteUpdate, UsuarioBase, UsuarioCreate, AdministradorCreate
 from app.core.security import hash_password,create_confirmation_token
 from utils.email_brevo import send_confirmation_email
-from fastapi import HTTPException, status, BackgroundTasks
+from fastapi import HTTPException, UploadFile, status, BackgroundTasks
 from datetime import datetime
 from passlib.context import CryptContext
 from app.modules.communities.schemas import ComunidadContexto
@@ -14,7 +14,7 @@ from typing import List, Optional, Dict
 from app.modules.communities.models import ClienteXComunidad, Comunidad
 from app.modules.billing.models import Inscripcion
 import base64
-
+import pandas as pd
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -237,3 +237,63 @@ def obtener_cliente_con_usuario_por_id(db: Session, id_cliente: int):
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
     return cliente
+
+def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str):
+    df = pd.read_excel(archivo.file)
+
+    resumen = {
+        "insertados": 0,
+        "omitidos": 0,
+        "errores": []
+    }
+
+    for idx, fila in df.iterrows():
+        try:
+            if pd.isna(fila['email']) or pd.isna(fila['num_doc']):
+                resumen["omitidos"] += 1
+                continue
+
+            # Verifica unicidad de email y num_doc
+            existe_email = db.exec(select(Usuario).where(Usuario.email == fila['email'])).first()
+            existe_doc = db.exec(select(Cliente).where(Cliente.num_doc == fila['num_doc'])).first()
+            if existe_email or existe_doc:
+                resumen["omitidos"] += 1
+                continue
+
+            usuario = Usuario(
+                nombre=fila['nombre'],
+                apellido=fila['apellido'],
+                email=fila['email'],
+                password=hash_password(fila['password']),
+                tipo="Cliente",
+                fecha_creacion=datetime.utcnow(),
+                creado_por=creado_por,
+                estado=True
+            )
+            db.add(usuario)
+            db.commit()
+            db.refresh(usuario)
+
+            cliente = Cliente(
+                id_usuario=usuario.id_usuario,
+                tipo_documento=fila['tipo_documento'],
+                num_doc=fila['num_doc'],
+                numero_telefono=fila['numero_telefono'],
+                id_departamento=int(fila['id_departamento']),
+                id_distrito=int(fila['id_distrito']),
+                direccion=fila.get('direccion'),
+                fecha_nac=fila['fecha_nac'],
+                genero=fila.get('genero'),
+                talla=float(fila['talla']),
+                peso=float(fila['peso'])
+            )
+            db.add(cliente)
+            db.commit()
+
+            resumen["insertados"] += 1
+
+        except Exception as e:
+            db.rollback()
+            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")
+
+    return resumen
