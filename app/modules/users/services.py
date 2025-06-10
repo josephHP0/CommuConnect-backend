@@ -249,7 +249,7 @@ def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str)
 
     for idx, fila in df.iterrows():
         try:
-            if pd.isna(fila['email']) or pd.isna(fila['num_doc']):
+            if pd.isna(fila['email']) or pd.isna(fila['num_doc']): # type: ignore
                 resumen["omitidos"] += 1
                 continue
 
@@ -261,11 +261,11 @@ def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str)
                 continue
 
             usuario = Usuario(
-                nombre=fila['nombre'],
-                apellido=fila['apellido'],
-                email=fila['email'],
-                password=hash_password(fila['password']),
-                tipo="Cliente",
+                nombre=fila['nombre'], # type: ignore
+                apellido=fila['apellido'], # type: ignore
+                email=fila['email'], # type: ignore
+                password=hash_password(fila['password']), # type: ignore
+                tipo="Cliente", # type: ignore
                 fecha_creacion=datetime.utcnow(),
                 creado_por=creado_por,
                 estado=True
@@ -275,17 +275,17 @@ def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str)
             db.refresh(usuario)
 
             cliente = Cliente(
-                id_usuario=usuario.id_usuario,
-                tipo_documento=fila['tipo_documento'],
-                num_doc=fila['num_doc'],
-                numero_telefono=fila['numero_telefono'],
-                id_departamento=int(fila['id_departamento']),
-                id_distrito=int(fila['id_distrito']),
+                id_usuario=usuario.id_usuario, # type: ignore
+                tipo_documento=fila['tipo_documento'], # type: ignore
+                num_doc=fila['num_doc'], # type: ignore
+                numero_telefono=fila['numero_telefono'], # type: ignore
+                id_departamento=int(fila['id_departamento']), # type: ignore
+                id_distrito=int(fila['id_distrito']), # type: ignore
                 direccion=fila.get('direccion'),
-                fecha_nac=fila['fecha_nac'],
+                fecha_nac=fila['fecha_nac'], # type: ignore
                 genero=fila.get('genero'),
-                talla=float(fila['talla']),
-                peso=float(fila['peso'])
+                talla=float(fila['talla']), # type: ignore
+                peso=float(fila['peso']) # type: ignore
             )
             db.add(cliente)
             db.commit()
@@ -294,6 +294,6 @@ def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str)
 
         except Exception as e:
             db.rollback()
-            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")
+            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}") # type: ignore
 
     return resumen

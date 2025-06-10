@@ -55,18 +55,18 @@ def crear_inscripcion(
     ahora = datetime.utcnow()
     hace_un_mes = ahora - timedelta(days=30)
 
-    # Busca inscripción previa pendiente en el último mes
+    # Busca inscripción previa pendiente en el último mes (pendiente de plan o de pago)
     inscripcion_previa = session.exec(
         select(Inscripcion)
         .where(
             Inscripcion.id_cliente == id_cliente,
             Inscripcion.id_comunidad == id_comunidad,
-            Inscripcion.estado == 0,
+            Inscripcion.estado.in_([2, 3]), # type: ignore
             Inscripcion.fecha_creacion >= hace_un_mes
         )
     ).first()
 
-    # Busca inscripción previa ya pagada
+    # Busca inscripción previa ya pagada (activa)
     inscripcion_pagada = session.exec(
         select(Inscripcion)
         .where(
@@ -75,6 +75,11 @@ def crear_inscripcion(
             Inscripcion.estado == 1
         )
     ).first()
+    nuevo_estado = 0
+    # Determina el nuevo estado según los datos recibidos
+    if not id_plan and not id_pago:
+        nuevo_estado = 2  # Pendiente de plan
+
 
     if inscripcion_previa:
         # Sobrescribe la inscripción pendiente
@@ -82,15 +87,15 @@ def crear_inscripcion(
         inscripcion_previa.id_pago = id_pago
         inscripcion_previa.modificado_por = creado_por
         inscripcion_previa.fecha_modificacion = ahora
+        inscripcion_previa.estado = 3
         session.add(inscripcion_previa)
         session.commit()
         session.refresh(inscripcion_previa)
         return inscripcion_previa
     elif inscripcion_pagada:
-        # Crea nueva inscripción con estado según si hay pago
-        estado = 0 if id_pago is None else 1
+        # Crea nueva inscripción con el estado correspondiente
         inscripcion = Inscripcion(
-            estado=estado,
+            estado=nuevo_estado,
             id_plan=id_plan,
             id_comunidad=id_comunidad,
             id_cliente=id_cliente,
@@ -104,9 +109,8 @@ def crear_inscripcion(
         return inscripcion
     else:
         # No hay inscripción previa, crea nueva
-        estado = 0 if id_pago is None else 1
         inscripcion = Inscripcion(
-            estado=estado,
+            estado=nuevo_estado,
             id_plan=id_plan,
             id_comunidad=id_comunidad,
             id_cliente=id_cliente,
@@ -119,20 +123,19 @@ def crear_inscripcion(
         session.refresh(inscripcion)
         return inscripcion
 
-
-
 def pagar_pendiente(
     session: Session,
     id_cliente: int,
     id_comunidad: int,
     creado_por: str
 ):
-    # Busca la inscripción activa del cliente en la comunidad
+    # Busca la inscripción pendiente de pago del cliente en la comunidad
     inscripcion = session.exec(
         select(Inscripcion)
         .where(
             Inscripcion.id_cliente == id_cliente,
-            Inscripcion.id_comunidad == id_comunidad
+            Inscripcion.id_comunidad == id_comunidad,
+            Inscripcion.estado == 3  # Solo pendiente de pago
         )
     ).first()
     if not inscripcion or not inscripcion.id_pago:
@@ -152,14 +155,13 @@ def pagar_pendiente(
     session.commit()
     session.refresh(pago)
 
-    # Cambia el estado de la inscripción a 1 (pagada/activa)
+    # Cambia el estado de la inscripción a 1 (activa)
     inscripcion.estado = 1
     inscripcion.modificado_por = creado_por
     inscripcion.fecha_modificacion = datetime.utcnow()
     session.add(inscripcion)
-
     session.commit()
-    session.refresh(pago)
+    session.refresh(inscripcion)
 
     # Registrar la relación solo si no existe ya
     existe_relacion = session.exec(
@@ -186,22 +188,11 @@ def pagar_pendiente(
             )
         ).first()
         if not detalle_existente:
-            detalle = DetalleInscripcion(
-                id_inscripcion=inscripcion.id_inscripcion, # type: ignore
-                fecha_registro=datetime.utcnow(),
-                fecha_inicio=datetime.utcnow(),
-                fecha_fin=None,
-                topes_disponibles=plan.topes,
-                topes_consumidos=0,
-                fecha_creacion=datetime.utcnow(),
-                creado_por=creado_por,
-                fecha_modificacion=None,
-                modificado_por=None,
-                estado=1
+            crear_detalle_inscripcion(
+                session=session,
+                id_inscripcion=inscripcion.id_inscripcion,  # type: ignore
+                creado_por=creado_por
             )
-            session.add(detalle)
-            session.commit()
-            session.refresh(detalle)
 
     return pago
 
@@ -256,6 +247,8 @@ def crear_detalle_inscripcion(
     id_inscripcion: int,
     creado_por: str
 ) -> DetalleInscripcion:
+    from datetime import timedelta
+
     inscripcion = session.get(Inscripcion, id_inscripcion)
     if not inscripcion:
         raise HTTPException(status_code=404, detail="Inscripción no encontrada")
@@ -263,14 +256,21 @@ def crear_detalle_inscripcion(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
 
+    fecha_inicio = datetime.utcnow()
+    # Si el id_plan es impar, fecha_fin en 1 año; si es par, en 1 mes
+    if inscripcion.id_plan and inscripcion.id_plan % 2 == 1:
+        fecha_fin = fecha_inicio + timedelta(days=365)
+    else:
+        fecha_fin = fecha_inicio + timedelta(days=30)
+
     detalle = DetalleInscripcion(
         id_inscripcion=id_inscripcion,
-        fecha_registro=datetime.utcnow(),
-        fecha_inicio=datetime.utcnow(),
-        fecha_fin=None,
+        fecha_registro=fecha_inicio,
+        fecha_inicio=fecha_inicio,
+        fecha_fin=fecha_fin,
         topes_disponibles=plan.topes,
         topes_consumidos=0,
-        fecha_creacion=datetime.utcnow(),
+        fecha_creacion=fecha_inicio,
         creado_por=creado_por,
         fecha_modificacion=None,
         modificado_por=None,
@@ -294,7 +294,7 @@ def tiene_membresia_asociada(
         select(Inscripcion)
         .where(
             Inscripcion.id_cliente == cliente_id,
-            Inscripcion.estado     == 1
+            Inscripcion.estado == 1  # Solo activas
         )
     )
     return session.exec(stmt).first() is not None
@@ -315,8 +315,34 @@ def tiene_membresia_activa_en_comunidad(session: Session, cliente_id: int, id_co
 def tiene_topes_disponibles(session: Session, id_cliente: int, id_comunidad: int) -> bool:
     inscripcion = obtener_inscripcion_activa(session, id_cliente, id_comunidad)
 
-    if not es_plan_con_topes(session, inscripcion.id_inscripcion):
+    if not es_plan_con_topes(session, inscripcion.id_inscripcion): # type: ignore
         return True  # Plan ilimitado, puede reservar sin topes
 
-    detalle = obtener_detalle_topes(session, inscripcion.id_inscripcion)
+    detalle = obtener_detalle_topes(session, inscripcion.id_inscripcion) # type: ignore
     return detalle["topes_disponibles"] > 0
+
+def congelar_inscripcion(session: Session, id_inscripcion: int, modificado_por: str):
+    inscripcion = session.get(Inscripcion, id_inscripcion)
+    if not inscripcion:
+        raise HTTPException(status_code=404, detail="Inscripción no encontrada")
+    inscripcion.estado = 0  # Congelado
+    inscripcion.modificado_por = modificado_por
+    inscripcion.fecha_modificacion = datetime.utcnow()
+    session.add(inscripcion)
+    session.commit()
+    session.refresh(inscripcion)
+    return inscripcion
+
+def reactivar_inscripcion(session: Session, id_inscripcion: int, modificado_por: str):
+    inscripcion = session.get(Inscripcion, id_inscripcion)
+    if not inscripcion:
+        raise HTTPException(status_code=404, detail="Inscripción no encontrada")
+    if inscripcion.estado != 0:
+        raise HTTPException(status_code=400, detail="Solo se pueden reactivar inscripciones congeladas")
+    inscripcion.estado = 1  # Activa
+    inscripcion.modificado_por = modificado_por
+    inscripcion.fecha_modificacion = datetime.utcnow()
+    session.add(inscripcion)
+    session.commit()
+    session.refresh(inscripcion)
+    return inscripcion
