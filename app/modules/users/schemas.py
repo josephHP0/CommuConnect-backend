@@ -124,3 +124,12 @@ class ClienteUsuarioFull(BaseModel):
 
     class Config:
         from_attributes = True
+
+class ClienteUpdateIn(BaseModel):
+    numero_telefono: Optional[str]
+    id_departamento: Optional[int]
+    id_distrito: Optional[int]
+    direccion: Optional[str]
+    genero: Optional[str]
+    talla: Optional[int]
+    peso: Optional[int]

@@ -4,7 +4,7 @@ from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id
 from app.modules.communities.services import unir_cliente_a_comunidad
-from app.modules.users.schemas import AdministradorCreate, AdministradorRead, ClienteCreate, ClienteRead, ClienteUpdate, ClienteUsuarioFull, UsuarioClienteFull , UsuarioCreate, UsuarioRead,UsuarioBase
+from app.modules.users.schemas import AdministradorCreate, AdministradorRead, ClienteCreate, ClienteRead, ClienteUpdate, ClienteUpdateIn, ClienteUsuarioFull, UsuarioClienteFull , UsuarioCreate, UsuarioRead,UsuarioBase
 from app.modules.users.services import crear_administrador, crear_cliente, crear_usuario, modificar_cliente, obtener_cliente_con_usuario_por_id, procesar_archivo_clientes, reenviar_confirmacion
 from app.modules.users.dependencies import get_current_admin
 from app.core.logger import logger
@@ -321,3 +321,23 @@ def carga_masiva_clientes(
         return {"mensaje": "Carga masiva completada", "resumen": resultado}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.put("/usuario/cliente/actualizar")
+def actualizar_datos_cliente(
+    datos: ClienteUpdateIn,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    cliente = session.exec(
+        select(Cliente).where(Cliente.id_usuario == current_user.id_usuario)
+    ).first()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    # Actualiza solo los campos enviados
+    for field, value in datos.dict(exclude_unset=True).items():
+        setattr(cliente, field, value)
+    session.add(cliente)
+    session.commit()
+    session.refresh(cliente)
+    return {"ok": True, "message": "Datos actualizados correctamente"}
