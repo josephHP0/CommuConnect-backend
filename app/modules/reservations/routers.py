@@ -5,9 +5,10 @@ from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlmodel import Session
 from app.core.db import get_session
 from app.modules.services.models import Local
-from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario
-from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse
+from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario, obtener_resumen_sesion_presencial, crear_reserva
+from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ReservaResponse
 from app.modules.auth.dependencies import get_current_user  
+from app.modules.users.models import Usuario
 
 router = APIRouter()
 
@@ -31,7 +32,7 @@ def listar_fechas_presenciales(
         id_local=id_local
     )
 
-    # Si quisiéramos distinguir “local no existe o no pertenece” de “no hay sesiones”,
+    # Si quisiéramos distinguir "local no existe o no pertenece" de "no hay sesiones",
     # el service podría lanzar excepción en ese caso y aquí atraparla:
     if fechas is None:
         raise HTTPException(
@@ -129,7 +130,7 @@ def sesiones_presenciales_detalladas(
         )
 
     if filas == []:
-        # Asumiremos que “[]” significa que no hay sesiones para esa combinación exacta.
+        # Asumiremos que "[]" significa que no hay sesiones para esa combinación exacta.
         # Si deseas un 404 cuando el local está mal, haz que el service devuelva 'None' en ese caso.
         return ListaSesionesPresencialesResponse(sesiones=[])
 
@@ -162,3 +163,46 @@ def verificar_reserva(
     except Exception as e:
         print(f"❌ Error al verificar reserva: {e}")
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
+
+@router.get(
+    "/summary/{id_sesion}",
+    response_model=ReservaPresencialSummary,
+    summary="Obtiene el resumen de una sesión presencial para el usuario actual",
+)
+def get_resumen_sesion_presencial(
+    *,
+    id_sesion: int,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user),
+):
+    resumen, error = obtener_resumen_sesion_presencial(
+        db=session, id_sesion=id_sesion, id_usuario=current_user.id_usuario
+    )
+
+    if error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error)
+
+    return resumen
+
+@router.post(
+    "/",
+    response_model=ReservaResponse,
+    summary="Crea una nueva reserva para una sesión",
+    status_code=status.HTTP_201_CREATED,
+)
+def create_new_reservation(
+    *,
+    reserva_in: ReservaRequest,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user),
+):
+    reserva, error = crear_reserva(
+        db=session,
+        id_sesion=reserva_in.id_sesion,
+        id_usuario=current_user.id_usuario
+    )
+
+    if error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+
+    return reserva

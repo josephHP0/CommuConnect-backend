@@ -5,7 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from app.modules.reservations.models import Sesion, SesionPresencial, SesionVirtual, Reserva
 from app.modules.services.models import Local
-from app.modules.users.models import Cliente
+from app.modules.users.models import Cliente, Usuario
 
 def obtener_fechas_presenciales(
     session: Session,
@@ -16,7 +16,7 @@ def obtener_fechas_presenciales(
     """
     Ejecuta la consulta a la base de datos y devuelve
     una lista de fechas (date) sin repetición, donde
-    hay sesiones “Presencial” filtradas por servicio, distrito y local.
+    hay sesiones "Presencial" filtradas por servicio, distrito y local.
     """
     local_obj = session.get(Local, id_local)
     if not local_obj or local_obj.id_distrito != id_distrito:
@@ -108,7 +108,7 @@ def obtener_horas_presenciales(
             s = total % 60
             horas_iso.append(f"{h:02d}:{m:02d}")
 
-    # 6) Devolver el JSON con la lista de strings “HH:MM:SS”
+    # 6) Devolver el JSON con la lista de strings "HH:MM:SS"
     return horas_iso
 
 def listar_sesiones_presenciales_detalladas(
@@ -213,7 +213,7 @@ def existe_reserva_para_usuario(db: Session, id_sesion: int, id_usuario: int) ->
     cliente = db.exec(stmt_cliente).first()
 
     if not cliente:
-        print("❌ Cliente no encontrado para este usuario.")
+        print("Cliente no encontrado para este usuario.")
         return False
 
     print(f"🔍 Verificando reserva para id_sesion={id_sesion}, id_cliente={cliente.id_cliente}")
@@ -227,8 +227,123 @@ def existe_reserva_para_usuario(db: Session, id_sesion: int, id_usuario: int) ->
     reserva = db.exec(stmt_reserva).first()
 
     if reserva:
-        print(f"✅ Reserva encontrada: ID {reserva.id_reserva}")
+        print(f"Reserva encontrada: ID {reserva.id_reserva}")
     else:
-        print("⚠️ No se encontró ninguna reserva activa.")
+        print("No se encontró ninguna reserva activa.")
 
     return reserva is not None
+
+def obtener_resumen_reserva_presencial(db: Session, id_sesion: int, id_usuario: int):
+    # 1. Obtener datos del usuario
+    usuario = db.get(Usuario, id_usuario)
+    if not usuario:
+        return None, "Usuario no encontrado"
+
+    # 2. Obtener datos de la sesión
+    stmt = (
+        select(
+            Sesion.id_sesion,
+            SesionPresencial.id_sesion_presencial,
+            func.date(Sesion.inicio).label("fecha"),
+            Sesion.inicio.label("dt_inicio"),
+            Sesion.fin.label("dt_fin"),
+            SesionPresencial.creado_por.label("responsable"),
+            SesionPresencial.capacidad.label("vacantes_totales"),
+            Local.nombre.label("ubicacion"),
+        )
+        .join(SesionPresencial, SesionPresencial.id_sesion == Sesion.id_sesion)
+        .join(Local, Local.id_local == SesionPresencial.id_local)
+        .where(Sesion.id_sesion == id_sesion)
+    )
+    
+    sesion_data = db.exec(stmt).first()
+
+    if not sesion_data:
+        return None, "Sesión no encontrada"
+    
+    (
+        id_ses, id_ses_pres, fecha_sesion,
+        dt_inicio, dt_fin,
+        responsable, vac_tot, ubicacion
+    ) = sesion_data
+
+    # 3. Calcular vacantes libres
+    total_confirmadas = db.exec(
+        select(func.count(Reserva.id_reserva))
+        .where(
+            Reserva.id_sesion == id_ses,
+            Reserva.estado_reserva == "confirmada"
+        )
+    ).one()
+    vac_libres = vac_tot - total_confirmadas
+
+    # 4. Combinar y devolver
+    resumen = {
+        "id_sesion": id_ses,
+        "id_sesion_presencial": id_ses_pres,
+        "fecha": fecha_sesion,
+        "ubicacion": ubicacion,
+        "responsable": responsable,
+        "hora_inicio": dt_inicio.strftime("%H:%M"),
+        "hora_fin": dt_fin.strftime("%H:%M"),
+        "vacantes_totales": vac_tot,
+        "vacantes_libres": vac_libres,
+        "nombres": usuario.nombres,
+        "apellidos": usuario.apellidos,
+    }
+    
+    return resumen, None
+
+def crear_reserva(db: Session, id_sesion: int, id_usuario: int):
+    # 1. Buscar el cliente
+    cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
+    if not cliente:
+        return None, "Cliente no encontrado"
+
+    # 2. Bloquear la fila de la sesión y obtener sus detalles para evitar race conditions.
+    #    Usar with_for_update() aplica un "SELECT ... FOR UPDATE" a nivel de DB.
+    #    Cualquier otra transacción que intente leer esta misma fila con un lock
+    #    tendrá que esperar a que esta transacción termine (con commit o rollback).
+    sesion_presencial_stmt = (
+        select(SesionPresencial)
+        .where(SesionPresencial.id_sesion == id_sesion)
+        .with_for_update()
+    )
+    sesion_presencial = db.exec(sesion_presencial_stmt).first()
+
+    # 3. Verificar que la sesión presencial existe
+    if not sesion_presencial:
+        sesion = db.get(Sesion, id_sesion)
+        if not sesion:
+            return None, "Sesión no encontrada"
+        # Esto podría ocurrir si la sesión no es de tipo "Presencial"
+        return None, "Detalles de la sesión presencial no encontrados"
+
+    # 4. Verificar si ya existe una reserva para este usuario y sesión
+    if existe_reserva_para_usuario(db, id_sesion, id_usuario):
+        return None, "Ya existe una reserva para esta sesión"
+
+    # 5. Verificar vacantes (esta operación ahora es segura gracias al lock)
+    total_confirmadas = db.exec(
+        select(func.count(Reserva.id_reserva))
+        .where(
+            Reserva.id_sesion == id_sesion,
+            Reserva.estado_reserva == "confirmada"
+        )
+    ).one()
+
+    if total_confirmadas >= sesion_presencial.capacidad:
+        return None, "No hay vacantes disponibles"
+
+    # 6. Crear la reserva
+    nueva_reserva = Reserva(
+        id_sesion=id_sesion,
+        id_cliente=cliente.id_cliente,
+        estado_reserva="confirmada",
+        fecha_creacion=datetime.utcnow()
+    )
+    db.add(nueva_reserva)
+    db.commit()
+    db.refresh(nueva_reserva)
+
+    return nueva_reserva, None

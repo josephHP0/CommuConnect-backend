@@ -1,5 +1,5 @@
 from typing import List, Optional
-from datetime import date,time
+from datetime import date, time, datetime
 from pydantic import BaseModel
 
 class FechasPresencialesResponse(BaseModel):
@@ -32,6 +32,23 @@ class SesionPresencialOut(BaseModel):
 
 class ListaSesionesPresencialesResponse(BaseModel):
     sesiones: List[SesionPresencialOut]
+
+    class Config:
+        orm_mode = True
+
+class ReservaPresencialSummary(SesionPresencialOut):
+    nombres: str
+    apellidos: str
+
+class ReservaRequest(BaseModel):
+    id_sesion: int
+
+class ReservaResponse(BaseModel):
+    id_reserva: int
+    id_sesion: int
+    id_cliente: int
+    estado_reserva: str
+    fecha_creacion: datetime
 
     class Config:
         orm_mode = True
