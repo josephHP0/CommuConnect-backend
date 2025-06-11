@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlmodel import Session
 from app.core.db import get_session
 from app.modules.services.models import Local
-from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario, obtener_resumen_sesion_presencial, crear_reserva
-from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ReservaResponse
+from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario, obtener_resumen_reserva_presencial, crear_reserva
+from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ReservaDetailResponse
 from app.modules.auth.dependencies import get_current_user  
 from app.modules.users.models import Usuario
+from fastapi import BackgroundTasks
 
 router = APIRouter()
 
@@ -147,7 +148,7 @@ def get_fechas_sesiones(id_profesional: int, session: Session = Depends(get_sess
         return {"fechas_inicio": fechas}
 
     except Exception as e:
-        print(f"❌ Error inesperado: {e}")
+        print(f"Error inesperado: {e}")
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 @router.get("/reserva-existe/{id_sesion}")
@@ -161,7 +162,7 @@ def verificar_reserva(
         existe = existe_reserva_para_usuario(db, id_sesion, id_usuario)
         return {"reserva_existente": existe}
     except Exception as e:
-        print(f"❌ Error al verificar reserva: {e}")
+        print(f"Error al verificar reserva: {e}")
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
 @router.get(
@@ -169,13 +170,13 @@ def verificar_reserva(
     response_model=ReservaPresencialSummary,
     summary="Obtiene el resumen de una sesión presencial para el usuario actual",
 )
-def get_resumen_sesion_presencial(
+def get_resumen_reserva_presencial(
     *,
     id_sesion: int,
     session: Session = Depends(get_session),
     current_user: Usuario = Depends(get_current_user),
 ):
-    resumen, error = obtener_resumen_sesion_presencial(
+    resumen, error = obtener_resumen_reserva_presencial(
         db=session, id_sesion=id_sesion, id_usuario=current_user.id_usuario
     )
 
@@ -186,7 +187,7 @@ def get_resumen_sesion_presencial(
 
 @router.post(
     "/",
-    response_model=ReservaResponse,
+    response_model=ReservaDetailResponse,
     summary="Crea una nueva reserva para una sesión",
     status_code=status.HTTP_201_CREATED,
 )
@@ -195,11 +196,13 @@ def create_new_reservation(
     reserva_in: ReservaRequest,
     session: Session = Depends(get_session),
     current_user: Usuario = Depends(get_current_user),
+    bg_tasks: BackgroundTasks,
 ):
     reserva, error = crear_reserva(
         db=session,
         id_sesion=reserva_in.id_sesion,
-        id_usuario=current_user.id_usuario
+        id_usuario=current_user.id_usuario,
+        bg_tasks=bg_tasks,
     )
 
     if error:

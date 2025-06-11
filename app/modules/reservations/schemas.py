@@ -23,7 +23,7 @@ class SesionPresencialOut(BaseModel):
     responsable: Optional[str]         # El campo creado_por de SesionPresencial o de Sesion
     hora_inicio: str
     hora_fin: str
-    vacantes_totales: int
+    vacantes_totales: Optional[int] = None
     vacantes_libres: int
 
     class Config:
@@ -39,6 +39,7 @@ class ListaSesionesPresencialesResponse(BaseModel):
 class ReservaPresencialSummary(SesionPresencialOut):
     nombres: str
     apellidos: str
+    vacantes_libres: Optional[int] = None
 
 class ReservaRequest(BaseModel):
     id_sesion: int
@@ -52,3 +53,23 @@ class ReservaResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+class ReservaDetailResponse(BaseModel):
+    id_reserva: int
+    nombre_servicio: str
+    fecha: date
+    hora_inicio: time
+    hora_fin: time
+    ubicacion: str
+    direccion_detallada: Optional[str] = None
+    nombre_cliente: str
+    apellido_cliente: str
+    topes_disponibles: Optional[int] = None
+    topes_consumidos: Optional[int] = None
+
+    class Config:
+        orm_mode = True
+        json_encoders = {
+            date: lambda v: v.strftime('%d/%m/%Y'),
+            time: lambda v: v.strftime('%H:%M'),
+        }

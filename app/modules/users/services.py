@@ -27,11 +27,10 @@ def crear_usuario(db: Session, usuario: UsuarioCreate):
         password=hashed_password,
         tipo=usuario.tipo, # type: ignore
         creado_por="sistema",
-        estado=True
+        estado=False
     )
     db.add(db_usuario)
-    db.commit()
-    db.refresh(db_usuario)
+    db.flush() 
     return db_usuario
 
 def crear_cliente(db: Session, cliente: ClienteCreate, bg: BackgroundTasks):
@@ -60,6 +59,7 @@ def crear_cliente(db: Session, cliente: ClienteCreate, bg: BackgroundTasks):
     db.add(db_cliente)
     db.commit()
     db.refresh(db_cliente)
+    db.refresh(nuevo_usuario)
     token = create_confirmation_token(nuevo_usuario.email)
     bg.add_task(send_confirmation_email, nuevo_usuario.email, token)
     return db_cliente
@@ -94,6 +94,7 @@ def crear_administrador(db: Session, administrador: AdministradorCreate):
     db.add(db_admin)
     db.commit()
     db.refresh(db_admin)
+    db.refresh(nuevo_usuario)
     return db_admin
 
 
