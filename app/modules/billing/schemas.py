@@ -50,3 +50,28 @@ class DetalleInscripcionOut(DetalleInscripcionBase):
 
     class Config:
         orm_mode = True
+
+
+class MembresiaAsociadaOut(BaseModel):
+    tieneMembresiaAsociada: bool
+
+    class Config:
+        orm_mode = True
+
+class ValidacionMembresiaOut(BaseModel):
+    tieneMembresiaActiva: bool
+
+class TieneTopesOut(BaseModel):
+    tieneTopes: bool
+
+class EsPlanConTopesOut(BaseModel):
+    esPlanConTopes: bool
+
+class InfoInscripcionOut(BaseModel):
+    id_inscripcion: int
+    estado: int
+    titulo: str
+    descripcion_plan: str
+    precio: float
+    periodo: str
+    fecha_fin: Optional[str]

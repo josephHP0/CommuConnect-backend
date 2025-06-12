@@ -1,10 +1,10 @@
 from sqlmodel import Session, select
 from app.core.enums import TipoUsuario
 from app.modules.users.models import Administrador, Usuario, Cliente
-from app.modules.users.schemas import ClienteCreate, UsuarioBase, UsuarioCreate, AdministradorCreate
+from app.modules.users.schemas import ClienteCreate, ClienteUpdate, UsuarioBase, UsuarioCreate, AdministradorCreate
 from app.core.security import hash_password,create_confirmation_token
 from utils.email_brevo import send_confirmation_email
-from fastapi import HTTPException, status, BackgroundTasks
+from fastapi import HTTPException, UploadFile, status, BackgroundTasks
 from datetime import datetime
 from passlib.context import CryptContext
 from app.modules.communities.schemas import ComunidadContexto
@@ -14,7 +14,7 @@ from typing import List, Optional, Dict
 from app.modules.communities.models import ClienteXComunidad, Comunidad
 from app.modules.billing.models import Inscripcion
 import base64
-
+import pandas as pd
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -197,3 +197,104 @@ def construir_respuesta_contexto(
 
     return respuesta
 
+
+def modificar_cliente(db: Session, id_usuario: int, data: dict, current_admin):
+    cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
+
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    usuario = db.get(Usuario, id_usuario)
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    password = data.pop("password", None)
+
+    for campo, valor in data.items():
+        if valor is not None:
+            if hasattr(usuario, campo):
+                setattr(usuario, campo, valor)
+            elif hasattr(cliente, campo):
+                setattr(cliente, campo, valor)
+
+
+    if password:
+        usuario.password = hash_password(password)
+
+    usuario.fecha_modificacion = datetime.utcnow()
+    usuario.modificado_por = current_admin.email
+
+    db.commit()
+    db.refresh(cliente)
+    return cliente
+
+
+def obtener_cliente_con_usuario_por_id(db: Session, id_cliente: int):
+    cliente = db.exec(
+        select(Cliente).where(Cliente.id_cliente == id_cliente)
+    ).first()
+
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+    return cliente
+
+def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str):
+    df = pd.read_excel(archivo.file)
+
+    resumen = {
+        "insertados": 0,
+        "omitidos": 0,
+        "errores": []
+    }
+
+    for idx, fila in df.iterrows():
+        try:
+            if pd.isna(fila['email']) or pd.isna(fila['num_doc']): # type: ignore
+                resumen["omitidos"] += 1
+                continue
+
+            # Verifica unicidad de email y num_doc
+            existe_email = db.exec(select(Usuario).where(Usuario.email == fila['email'])).first()
+            existe_doc = db.exec(select(Cliente).where(Cliente.num_doc == fila['num_doc'])).first()
+            if existe_email or existe_doc:
+                resumen["omitidos"] += 1
+                continue
+
+            usuario = Usuario(
+                nombre=fila['nombre'], # type: ignore
+                apellido=fila['apellido'], # type: ignore
+                email=fila['email'], # type: ignore
+                password=hash_password(fila['password']), # type: ignore
+                tipo="Cliente", # type: ignore
+                fecha_creacion=datetime.utcnow(),
+                creado_por=creado_por,
+                estado=True
+            )
+            db.add(usuario)
+            db.commit()
+            db.refresh(usuario)
+
+            cliente = Cliente(
+                id_usuario=usuario.id_usuario, # type: ignore
+                tipo_documento=fila['tipo_documento'], # type: ignore
+                num_doc=fila['num_doc'], # type: ignore
+                numero_telefono=fila['numero_telefono'], # type: ignore
+                id_departamento=int(fila['id_departamento']), # type: ignore
+                id_distrito=int(fila['id_distrito']), # type: ignore
+                direccion=fila.get('direccion'),
+                fecha_nac=fila['fecha_nac'], # type: ignore
+                genero=fila.get('genero'),
+                talla=float(fila['talla']), # type: ignore
+                peso=float(fila['peso']) # type: ignore
+            )
+            db.add(cliente)
+            db.commit()
+
+            resumen["insertados"] += 1
+
+        except Exception as e:
+            db.rollback()
+            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}") # type: ignore
+
+    return resumen

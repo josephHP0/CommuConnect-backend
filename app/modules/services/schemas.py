@@ -4,6 +4,8 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 
+from app.core.enums import ModalidadServicio
+
 class ServicioResumen(BaseModel):
     nombre: str
     modalidad: str
@@ -46,3 +48,29 @@ class LocalOut(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class ServicioRead(BaseModel):
+    id_servicio: int
+    nombre: str
+    descripcion: str
+    modalidad: str
+    imagen_base64: Optional[str]
+    fecha_creacion: Optional[datetime]
+    creado_por: Optional[str]
+    fecha_modificacion: Optional[datetime]
+    modificado_por: Optional[str]
+    estado: bool
+
+    class Config:
+        orm_mode = True
+
+class ServicioCreate(BaseModel):
+    nombre: str
+    descripcion: str
+    modalidad: ModalidadServicio
+
+class ServicioUpdate(BaseModel):
+    nombre: Optional[str]
+    descripcion: Optional[str]
+    modalidad: Optional[ModalidadServicio]  # Ya definido antes
