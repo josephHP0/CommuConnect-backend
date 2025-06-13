@@ -5,13 +5,21 @@ from sqlmodel import Session, select
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import BackgroundTasks
+from unittest.mock import MagicMock, patch
+import threading
 
 # Add project root to the path to allow direct imports of app modules
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, root_dir)
 
 # Adjust imports to bring in the service and models
-from app.modules.reservations.services import crear_reserva
+from app.modules.reservations.services import (
+    listar_reservas_usuario_comunidad_semana, 
+    obtener_fechas_presenciales, 
+    obtener_horas_presenciales, 
+    listar_sesiones_presenciales_detalladas,
+    crear_reserva_presencial
+)
 from app.modules.users.models import Usuario, Cliente
 from app.modules.billing.models import Plan, Inscripcion, DetalleInscripcion
 from app.modules.communities.models import Comunidad
@@ -163,7 +171,7 @@ def attempt_reservation_service(user_id, sesion_id, session_factory):
     with session_factory() as db:
         try:
             # We pass the user ID directly to the service function
-            reserva, error = crear_reserva(db=db, id_sesion=sesion_id, id_cliente=user_id)
+            reserva, error = crear_reserva_presencial(db=db, id_sesion=sesion_id, id_usuario=user_id)
             if error:
                 print(f"[THREAD {user_id}] Service returned error: {error}")
                 return "ERROR", error
@@ -178,7 +186,7 @@ def attempt_reservation_service(user_id, sesion_id, session_factory):
 # --- The Actual Test Case ---
 def test_concurrency_on_last_spot_service_layer(session_factory, setup_data_service_test):
     """
-    Tests the concurrency handling of the `crear_reserva` service directly.
+    Tests the concurrency handling of the `crear_reserva_presencial` service directly.
     Simulates two users trying to book the last spot at the same time.
     """
     sesion_id = setup_data_service_test["sesion_id"]

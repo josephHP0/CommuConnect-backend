@@ -1,7 +1,7 @@
 from datetime import datetime
-from pydantic import BaseModel
-from typing import Optional
-from typing import Union
+from pydantic import BaseModel, validator
+from typing import Optional, Union
+from utils.datetime_utils import convert_utc_to_local
 
 class PlanOut(BaseModel):
     id_plan: int
@@ -48,6 +48,12 @@ class DetalleInscripcionOut(DetalleInscripcionBase):
     fecha_modificacion: Optional[datetime] = None
     modificado_por: Optional[str] = None
 
+    @validator('fecha_registro', 'fecha_inicio', 'fecha_fin', 'fecha_creacion', 'fecha_modificacion', pre=True, always=True)
+    def localize_dates(cls, v):
+        if v:
+            return convert_utc_to_local(v)
+        return v
+
     class Config:
         orm_mode = True
 
@@ -75,3 +81,12 @@ class InfoInscripcionOut(BaseModel):
     precio: float
     periodo: str
     fecha_fin: Optional[str]
+    fecha_inicio: Optional[str]
+    topes_disponibles: Optional[Union[int, str]]
+
+    @validator('fecha_inicio', 'fecha_fin', pre=True, always=True)
+    def format_and_localize_dates(cls, v):
+        if isinstance(v, datetime):
+            local_dt = convert_utc_to_local(v)
+            return local_dt.isoformat() if local_dt else None
+        return v # Mantiene el valor si ya es string o None

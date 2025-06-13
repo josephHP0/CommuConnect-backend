@@ -5,13 +5,14 @@ from fastapi import APIRouter, Depends, Query, HTTPException, status
 from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.services.models import Local
-from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario, obtener_resumen_reserva_presencial, crear_reserva, listar_reservas_usuario_comunidad_semana
-from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ReservaDetailResponse, ListaReservasResponse, ListaReservasComunidadResponse, ReservaComunidadResponse
+from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario, obtener_resumen_reserva_presencial, crear_reserva_presencial, listar_reservas_usuario_comunidad_semana, get_reservation_details
+from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ReservaDetailResponse, ListaReservasResponse, ListaReservasComunidadResponse, ReservaComunidadResponse, ReservaDetailScreenResponse
 from app.modules.auth.dependencies import get_current_user  
 from app.modules.users.models import Usuario
 from fastapi import BackgroundTasks
 from app.modules.billing.services import obtener_inscripcion_activa, es_plan_con_topes, obtener_detalle_topes
 from app.modules.users.models import Cliente
+from utils.datetime_utils import convert_utc_to_local
 
 router = APIRouter()
 
@@ -116,14 +117,12 @@ def sesiones_presenciales_detalladas(
             detail="Formato inválido para 'fecha'. Debe ser DD/MM/YYYY, por ejemplo: 10/06/2025."
         )
 
-    fecha_iso = fecha_obj.strftime("%Y-%m-%d")
-
     filas = listar_sesiones_presenciales_detalladas(
         session=session,
         id_servicio=id_servicio,
         id_distrito=id_distrito,
         id_local=id_local,
-        fecha_seleccionada=fecha_iso,
+        fecha_seleccionada=fecha_obj,
         hora_inicio=hora
     )
     if filas is None:
@@ -200,7 +199,7 @@ def create_new_reservation(
     current_user: Usuario = Depends(get_current_user),
     bg_tasks: BackgroundTasks,
 ):
-    reserva, error = crear_reserva(
+    reserva, error = crear_reserva_presencial(
         db=session,
         id_sesion=reserva_in.id_sesion,
         id_usuario=current_user.id_usuario,
@@ -239,14 +238,41 @@ def list_reservations_by_user_community(
         fecha=fecha_obj
     )
     
-    response_reservas = [
-        ReservaComunidadResponse(
-            id_reserva=reserva.id_reserva,
-            nombre_servicio=reserva.nombre_servicio,
-            fecha=reserva.inicio.date(),
-            hora_inicio=reserva.inicio.time(),
-            hora_fin=reserva.fin.time()
-        ) for reserva in reservas_data
-    ]
+    response_reservas = []
+    for reserva in reservas_data:
+        local_inicio = convert_utc_to_local(reserva.inicio)
+        local_fin = convert_utc_to_local(reserva.fin)
+        
+        response_reservas.append(
+            ReservaComunidadResponse(
+                id_reserva=reserva.id_reserva,
+                nombre_servicio=reserva.nombre_servicio,
+                fecha=local_inicio.date() if local_inicio else None,
+                hora_inicio=local_inicio.time() if local_inicio else None,
+                hora_fin=local_fin.time() if local_fin else None
+            )
+        )
     
     return ListaReservasComunidadResponse(reservas=response_reservas)
+
+@router.get(
+    "/{id_reserva}/details",
+    response_model=ReservaDetailScreenResponse,
+    summary="Obtiene el detalle de una reserva para la pantalla de detalle",
+)
+def get_reservation_details_for_screen(
+    *,
+    id_reserva: int,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user),
+):
+    details, error = get_reservation_details(
+        db=session,
+        id_reserva=id_reserva,
+        id_usuario=current_user.id_usuario
+    )
+
+    if error:
+        raise HTTPException(status_code=404, detail=error)
+
+    return details

@@ -28,6 +28,9 @@ class SesionPresencialOut(BaseModel):
 
     class Config:
         orm_mode = True
+        json_encoders = {
+            date: lambda d: d.strftime("%d/%m/%Y")
+        }
 
 
 class ListaSesionesPresencialesResponse(BaseModel):
@@ -99,3 +102,23 @@ class ListaReservasComunidadResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+class ReservaDetailScreenResponse(BaseModel):
+    nombre_servicio: str
+    fecha: date
+    hora_inicio: time
+    hora_fin: time
+    responsable: Optional[str] = None
+    tipo_sesion: str
+    nombre_local: Optional[str] = None
+    direccion: Optional[str] = None
+    url_meeting: Optional[str] = None
+    nombre_profesional: Optional[str] = None
+    formulario_completado: bool
+
+    class Config:
+        orm_mode = True
+        json_encoders = {
+            date: lambda v: v.strftime('%d/%m/%Y'),
+            time: lambda v: v.strftime('%H:%M'),
+        }

@@ -34,3 +34,4 @@ mysql-connector-python
 pandas>=2.0.0
 openpyxl>=3.1.0
 pandas
+pytz
