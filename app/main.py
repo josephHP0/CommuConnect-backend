@@ -9,6 +9,9 @@ from app.modules.billing.routers import router as billing_router
 from app.modules.services.routers import router as  services_router
 from app.modules.reservations.routers import router as  reservations_router
 from fastapi.middleware.cors import CORSMiddleware
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
 
 
 app = FastAPI(debug=True)

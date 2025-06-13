@@ -66,3 +66,14 @@ class TieneTopesOut(BaseModel):
 
 class EsPlanConTopesOut(BaseModel):
     esPlanConTopes: bool
+
+class InfoInscripcionOut(BaseModel):
+    id_inscripcion: int
+    estado: int
+    titulo: str
+    descripcion_plan: str
+    precio: float
+    periodo: str
+    fecha_fin: Optional[str]
+    fecha_inicio: Optional[str]
+    topes_disponibles: Optional[Union[int, str]]

@@ -1,5 +1,5 @@
 from typing import List, Optional
-from datetime import date,time
+from datetime import date, time, datetime
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -24,7 +24,7 @@ class SesionPresencialOut(BaseModel):
     responsable: Optional[str]         # El campo creado_por de SesionPresencial o de Sesion
     hora_inicio: str
     hora_fin: str
-    vacantes_totales: int
+    vacantes_totales: Optional[int] = None
     vacantes_libres: int
 
     class Config:
@@ -45,12 +45,71 @@ class ReservaOut(BaseModel):
     Schema para la respuesta de una reserva.
     Incluye datos básicos y, en caso de sesión virtual, la URL asociada.
     """
+class ReservaPresencialSummary(SesionPresencialOut):
+    nombres: str
+    apellidos: str
+    vacantes_libres: Optional[int] = None
+
+class ReservaRequest(BaseModel):
+    id_sesion: int
+
+class ReservaResponse(BaseModel):
     id_reserva: int
     id_sesion: int
     id_cliente: int
     estado_reserva: str
     fecha_reserva: datetime
     url_archivo: Optional[str]
+
+    class Config:
+        orm_mode = True
+    fecha_creacion: datetime
+
+    class Config:
+        orm_mode = True
+
+class ReservaDetailResponse(BaseModel):
+    id_reserva: int
+    nombre_servicio: str
+    fecha: date
+    hora_inicio: time
+    hora_fin: time
+    ubicacion: str
+    direccion_detallada: Optional[str] = None
+    nombre_cliente: str
+    apellido_cliente: str
+    topes_disponibles: Optional[int] = None
+    topes_consumidos: Optional[int] = None
+
+    class Config:
+        orm_mode = True
+        json_encoders = {
+            date: lambda v: v.strftime('%d/%m/%Y'),
+            time: lambda v: v.strftime('%H:%M'),
+        }
+
+class ListaReservasResponse(BaseModel):
+    reservas: List[ReservaDetailResponse]
+
+    class Config:
+        orm_mode = True
+
+class ReservaComunidadResponse(BaseModel):
+    id_reserva: int
+    nombre_servicio: str
+    fecha: date
+    hora_inicio: time
+    hora_fin: time
+
+    class Config:
+        orm_mode = True
+        json_encoders = {
+            date: lambda v: v.strftime('%d/%m/%Y'),
+            time: lambda v: v.strftime('%H:%M'),
+        }
+
+class ListaReservasComunidadResponse(BaseModel):
+    reservas: List[ReservaComunidadResponse]
 
     class Config:
         orm_mode = True

@@ -18,3 +18,8 @@ class RegisterRequest(BaseModel):
     password: str
     creado_por: str
     tipo: TipoUsuario
+
+class CambioPasswordIn(BaseModel):
+    actual: str
+    nueva: str
+    repetir: str 
