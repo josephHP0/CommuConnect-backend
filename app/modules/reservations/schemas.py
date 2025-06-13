@@ -73,3 +73,29 @@ class ReservaDetailResponse(BaseModel):
             date: lambda v: v.strftime('%d/%m/%Y'),
             time: lambda v: v.strftime('%H:%M'),
         }
+
+class ListaReservasResponse(BaseModel):
+    reservas: List[ReservaDetailResponse]
+
+    class Config:
+        orm_mode = True
+
+class ReservaComunidadResponse(BaseModel):
+    id_reserva: int
+    nombre_servicio: str
+    fecha: date
+    hora_inicio: time
+    hora_fin: time
+
+    class Config:
+        orm_mode = True
+        json_encoders = {
+            date: lambda v: v.strftime('%d/%m/%Y'),
+            time: lambda v: v.strftime('%H:%M'),
+        }
+
+class ListaReservasComunidadResponse(BaseModel):
+    reservas: List[ReservaComunidadResponse]
+
+    class Config:
+        orm_mode = True

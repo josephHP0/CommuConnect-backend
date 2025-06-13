@@ -2,14 +2,16 @@ from datetime import datetime, date
 from typing import List
 from fastapi import HTTPException
 from fastapi import APIRouter, Depends, Query, HTTPException, status
-from sqlmodel import Session
+from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.services.models import Local
-from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario, obtener_resumen_reserva_presencial, crear_reserva
-from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ReservaDetailResponse
+from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario, obtener_resumen_reserva_presencial, crear_reserva, listar_reservas_usuario_comunidad_semana
+from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ReservaDetailResponse, ListaReservasResponse, ListaReservasComunidadResponse, ReservaComunidadResponse
 from app.modules.auth.dependencies import get_current_user  
 from app.modules.users.models import Usuario
 from fastapi import BackgroundTasks
+from app.modules.billing.services import obtener_inscripcion_activa, es_plan_con_topes, obtener_detalle_topes
+from app.modules.users.models import Cliente
 
 router = APIRouter()
 
@@ -209,3 +211,42 @@ def create_new_reservation(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
 
     return reserva
+
+@router.get(
+    "/by-user-community",
+    response_model=ListaReservasComunidadResponse,
+    summary="Listar reservas de un usuario en una comunidad para los siguientes 7 dias",
+)
+def list_reservations_by_user_community(
+    *,
+    id_comunidad: int = Query(..., description="ID de la comunidad a filtrar"),
+    fecha: str = Query(..., description="Fecha de inicio en formato DD/MM/YYYY"),
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user),
+):
+    try:
+        fecha_obj = datetime.strptime(fecha, "%d/%m/%Y").date()
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Formato inválido para 'fecha'. Debe ser DD/MM/YYYY."
+        )
+
+    reservas_data = listar_reservas_usuario_comunidad_semana(
+        db=session, 
+        id_usuario=current_user.id_usuario, 
+        id_comunidad=id_comunidad, 
+        fecha=fecha_obj
+    )
+    
+    response_reservas = [
+        ReservaComunidadResponse(
+            id_reserva=reserva.id_reserva,
+            nombre_servicio=reserva.nombre_servicio,
+            fecha=reserva.inicio.date(),
+            hora_inicio=reserva.inicio.time(),
+            hora_fin=reserva.fin.time()
+        ) for reserva in reservas_data
+    ]
+    
+    return ListaReservasComunidadResponse(reservas=response_reservas)

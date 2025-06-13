@@ -14,6 +14,33 @@ from app.modules.billing.services import (
 from app.modules.billing.models import DetalleInscripcion
 from utils.email_brevo import send_reservation_email
 from fastapi import BackgroundTasks
+from app.modules.communities.models import Comunidad
+
+def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_comunidad: int, fecha: date):
+    end_date = fecha + timedelta(days=7)
+
+    cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
+    if not cliente:
+        return []
+
+    stmt = (
+        select(
+            Reserva.id_reserva,
+            Servicio.nombre.label("nombre_servicio"),
+            Sesion.inicio,
+            Sesion.fin
+        )
+        .join(Sesion, Reserva.id_sesion == Sesion.id_sesion)
+        .join(Servicio, Sesion.id_servicio == Servicio.id_servicio)
+        .join(ComunidadXServicio, Servicio.id_servicio == ComunidadXServicio.id_servicio)
+        .where(Reserva.id_cliente == cliente.id_cliente)
+        .where(ComunidadXServicio.id_comunidad == id_comunidad)
+        .where(func.date(Sesion.inicio) >= fecha)
+        .where(func.date(Sesion.inicio) < end_date)
+    )
+    
+    reservas = db.exec(stmt).all()
+    return reservas
 
 def obtener_fechas_presenciales(
     session: Session,
