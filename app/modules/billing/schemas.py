@@ -75,3 +75,5 @@ class InfoInscripcionOut(BaseModel):
     precio: float
     periodo: str
     fecha_fin: Optional[str]
+    fecha_inicio: Optional[str]
+    topes_disponibles: Optional[Union[int, str]]
