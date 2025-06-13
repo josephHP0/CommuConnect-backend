@@ -2,13 +2,17 @@ from datetime import datetime, date
 from typing import List
 from fastapi import HTTPException
 from fastapi import APIRouter, Depends, Query, HTTPException, status
-from sqlmodel import Session
+from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.services.models import Local
 from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario
 from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse
 from app.modules.auth.dependencies import get_current_user  
-
+from app.modules.reservations.schemas import ReservaCreate, ReservaOut
+from app.modules.reservations.services import reservar_sesion, obtener_url_archivo_virtual
+from app.modules.reservations.models   import Sesion, Reserva, SesionVirtual
+from app.modules.auth.dependencies import get_current_cliente_id
+from sqlalchemy.exc import IntegrityError
 router = APIRouter()
 
 @router.get(
@@ -162,3 +166,61 @@ def verificar_reserva(
     except Exception as e:
         print(f"❌ Error al verificar reserva: {e}")
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
+
+
+
+
+@router.post(
+    "/virtual",
+    response_model=ReservaOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Crear reserva virtual"
+)
+def create_reserva_virtual(
+    reserva_in: ReservaCreate,
+    session: Session = Depends(get_session),
+    cliente_id: int = Depends(get_current_cliente_id)
+) -> ReservaOut:
+    """
+    Crea una reserva para una sesión virtual.
+    El frontend solo envía el id_sesion; el backend orquesta validaciones y retorna la reserva.
+    """
+    try:
+        # 1) Llamamos al service, que solo añade y hace flush
+        reserva = reservar_sesion(session, reserva_in.id_sesion, cliente_id)
+
+        # 2) Si no hubo excepción, confirmamos la transacción
+        session.commit()
+
+        # 3) Ahora podemos seguir obteniendo datos relacionados
+        url_archivo = obtener_url_archivo_virtual(session, reserva.id_sesion)
+
+        return ReservaOut(
+            id_reserva=reserva.id_reserva,
+            id_sesion=reserva.id_sesion,
+            id_cliente=reserva.id_cliente,
+            estado_reserva=reserva.estado_reserva,
+            fecha_reserva=reserva.fecha_creacion,
+            url_archivo=url_archivo
+        )
+
+    except HTTPException:
+        # Rollback de validaciones (404, 409, etc.)
+        session.rollback()
+        raise
+
+    except IntegrityError:
+        # Si detectas un IntegrityError inesperado
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error de concurrencia al procesar la reserva. Intenta nuevamente."
+        )
+
+    except Exception:
+        # Cualquier otro error
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al crear la reserva."
+        )
