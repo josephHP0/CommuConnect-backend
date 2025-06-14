@@ -109,6 +109,10 @@ def crear_inscripcion(
         return inscripcion
     else:
         # No hay inscripción previa, crea nueva
+        if not id_plan and not id_pago:
+            nuevo_estado = 2  # Pendiente de plan
+        elif id_pago:
+            nuevo_estado = 3  # Pendiente de pago
         inscripcion = Inscripcion(
             estado=nuevo_estado,
             id_plan=id_plan,

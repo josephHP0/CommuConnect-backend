@@ -120,14 +120,6 @@ def validar_membresia_asociada(
     return MembresiaAsociadaOut(tieneMembresiaAsociada=ok)
 
 
-"""Este endpoint GET /usuario/validar-membresia/{id_comunidad} verifica si el 
-cliente autenticado tiene una membresía activa en una comunidad específica. 
-Utiliza su id_cliente (extraído del token JWT) y el id_comunidad del path. 
-Consulta la base de datos y devuelve un JSON con el resultado:
-json: { "tieneMembresiaActiva": true | false }
-Solo retorna true si existe una inscripción activa (estado = 1) para ese cliente en esa comunidad.
-"""
-
 @router.get("/usuario/validar-membresia/{id_comunidad}", response_model=ValidacionMembresiaOut)
 def validar_membresia_por_comunidad(
     id_comunidad: int,
@@ -231,6 +223,8 @@ def obtener_info_inscripcion(
 
     periodo = "Anual" if inscripcion.id_plan and inscripcion.id_plan % 2 == 1 else "Mensual"
     fecha_fin = detalle.fecha_fin.isoformat() if detalle and detalle.fecha_fin else None
+    fecha_incio = detalle.fecha_inicio.isoformat() if detalle and detalle.fecha_inicio else None
+    topes_disponibles = detalle.topes_disponibles if detalle else None
 
     return InfoInscripcionOut(
         id_inscripcion=inscripcion.id_inscripcion, # type: ignore
@@ -239,5 +233,7 @@ def obtener_info_inscripcion(
         descripcion_plan=plan.descripcion,
         precio=float(plan.precio),
         periodo=periodo,
-        fecha_fin=fecha_fin
+        fecha_fin=fecha_fin,
+        fecha_inicio=fecha_incio,
+        topes_disponibles = "Ilimitado" if detalle and detalle.topes_disponibles and detalle.topes_disponibles > 200 else (detalle.topes_disponibles if detalle else None) # type: ignore
     )
