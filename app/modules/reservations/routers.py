@@ -6,14 +6,19 @@ from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.services.models import Local
 from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario, obtener_resumen_reserva_presencial, crear_reserva_presencial, listar_reservas_usuario_comunidad_semana, get_reservation_details, cancelar_reserva_por_id
-from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ListaReservasResponse, ListaReservasComunidadResponse, ReservaComunidadResponse, ReservaDetailScreenResponse, ReservaCreadaResponse
+from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ListaReservasResponse, ListaReservasComunidadResponse, ReservaComunidadResponse, ReservaDetailScreenResponse, ReservaResponse
 from app.modules.auth.dependencies import get_current_user  
+from app.modules.reservations.schemas import ReservaCreate
+from app.modules.reservations.models   import Sesion, Reserva, SesionVirtual
+from app.modules.auth.dependencies import get_current_cliente_id
+from sqlalchemy.exc import IntegrityError
 from app.modules.users.models import Usuario
 from fastapi import BackgroundTasks
 from app.modules.billing.services import obtener_inscripcion_activa, es_plan_con_topes, obtener_detalle_topes
 from app.modules.users.models import Cliente
 from utils.datetime_utils import convert_utc_to_local
 from app.modules.users.dependencies import get_current_user
+from app.modules.reservations.services import reservar_sesion_virtual, obtener_url_archivo_virtual
 
 router = APIRouter()
 
@@ -167,6 +172,68 @@ def verificar_reserva(
         print(f"Error al verificar reserva: {e}")
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
+@router.post(
+    "/virtual",
+    response_model=ReservaResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Crear reserva virtual"
+)
+def create_reserva_virtual(
+    reserva_in: ReservaCreate,
+    session: Session = Depends(get_session),
+    cliente_id: int = Depends(get_current_cliente_id),
+    usuario: Usuario = Depends(get_current_user)
+) -> ReservaResponse:
+    """
+    Crea una reserva para una sesión virtual.
+    El frontend solo envía el id_sesion; el backend orquesta validaciones y retorna la reserva.
+    """
+    try:
+        # 1) Llamamos al service, que solo añade y hace flush
+        reserva = reservar_sesion_virtual(
+            session, reserva_in.id_sesion, cliente_id, usuario.id_usuario,
+            id_comunidad=reserva_in.id_comunidad )
+
+        # 2) Si no hubo excepción, confirmamos la transacción
+        session.commit()
+
+        # 3) Ahora podemos seguir obteniendo datos relacionados
+        url_archivo = obtener_url_archivo_virtual(session, reserva.id_sesion)
+
+        return ReservaResponse(
+            id_reserva=reserva.id_reserva,
+            id_sesion=reserva.id_sesion,
+            id_cliente=reserva.id_cliente,
+            id_comunidad=reserva.id_comunidad, 
+            estado_reserva=reserva.estado_reserva,
+            fecha_reservada=reserva.fecha_reservada,
+            url_archivo=url_archivo,
+            fecha_creacion=reserva.fecha_creacion
+        )
+
+    except HTTPException:
+        # Rollback de validaciones (404, 409, etc.)
+        session.rollback()
+        raise
+
+    except IntegrityError:
+        # Si detectas un IntegrityError inesperado
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error de concurrencia al procesar la reserva. Intenta nuevamente."
+        )
+
+    except Exception:
+        # Cualquier otro error
+        session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error interno al crear la reserva."
+        )
+    
+
+
 @router.get(
     "/summary/{id_sesion}",
     response_model=ReservaPresencialSummary,
@@ -187,36 +254,45 @@ def get_resumen_reserva_presencial(
 
     return resumen
 
+
+
 @router.post(
     "/",
-    response_model=ReservaCreadaResponse,
-    summary="Crea una nueva reserva para una sesión",
+    response_model=ReservaResponse,
+    summary="Crea una nueva reserva para una sesión presencial",
     status_code=status.HTTP_201_CREATED,
 )
-def create_new_reservation(
+def create_reserva_presencial(
     *,
     reserva_in: ReservaRequest,
     session: Session = Depends(get_session),
     current_user: Usuario = Depends(get_current_user),
     bg_tasks: BackgroundTasks,
 ):
-    reserva, error = crear_reserva_presencial(
+    """
+    Crea una nueva reserva para una sesión presencial.
+    El cliente debe estar autenticado.
+    Se descuenta un crédito del plan del cliente si aplica.
+    """
+    response, error = crear_reserva_presencial(
         db=session,
         id_sesion=reserva_in.id_sesion,
         id_usuario=current_user.id_usuario,
-        bg_tasks=bg_tasks,
+        bg_tasks=bg_tasks
     )
 
     if error:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error)
+        raise HTTPException(status_code=400, detail=error)
 
-    return reserva
+    return response
 
 @router.get(
     "/by-user-community",
     response_model=ListaReservasComunidadResponse,
     summary="Listar reservas de un usuario en una comunidad para los siguientes 7 dias",
 )
+
+
 def list_reservations_by_user_community(
     *,
     id_comunidad: int = Query(..., description="ID de la comunidad a filtrar"),

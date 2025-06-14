@@ -1,9 +1,14 @@
 from datetime import date, datetime, time, timedelta
-from typing import List
+from typing import List, Optional
 from sqlmodel import Session, select
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from app.modules.reservations.models import Sesion, SesionPresencial, SesionVirtual, Reserva
+from app.modules.services.models import Local
+from app.modules.users.models import Cliente
+from fastapi import HTTPException,status
+from app.modules.billing.models      import Inscripcion
+from sqlalchemy.exc import IntegrityError
 from app.modules.services.models import Local, Servicio, ComunidadXServicio
 from app.modules.users.models import Cliente, Usuario
 from app.modules.billing.services import (
@@ -15,6 +20,7 @@ from app.modules.billing.models import DetalleInscripcion
 from utils.email_brevo import send_reservation_email
 from fastapi import BackgroundTasks, HTTPException
 from app.modules.communities.models import Comunidad
+from datetime import datetime, timezone
 from utils.datetime_utils import convert_utc_to_local, convert_local_to_utc
 
 def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_comunidad: int, fecha: date):
@@ -291,6 +297,212 @@ def existe_reserva_para_usuario(db: Session, id_sesion: int, id_usuario: int) ->
 
     return reserva is not None
 
+
+
+
+
+
+def validar_sesion_existente(session: Session, id_sesion: int) -> Sesion:
+    """
+    Verifica que la sesión exista. Lanza 404 si no.
+    """
+    sesion = session.get(Sesion, id_sesion)
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada.")
+    return sesion
+
+
+def validar_sesion_no_reservada(session: Session, id_sesion: int) -> None:
+    """
+    Verifica que la sesión no tenga ya una reserva activa. Lanza 409 si existe.
+    """
+    reserva = session.exec(
+        select(Reserva).where(
+            Reserva.id_sesion == id_sesion,
+            Reserva.estado_reserva == "confirmada"
+        )
+    ).first()
+    if reserva:
+        raise HTTPException(
+            status_code=409,
+            detail="La sesión ya está reservada por otro cliente."
+        )
+
+
+def validar_cliente_sin_conflicto(
+    session: Session,
+    cliente_id: int,
+    sesion_actual: Sesion,
+    id_comunidad: int
+) -> None:
+    """
+    Verifica que el cliente no tenga otra reserva confirmada o pendiente
+    que se cruce en el tiempo con la sesión actual, DENTRO DE LA MISMA COMUNIDAD.
+    """
+    inicio_nueva = sesion_actual.inicio
+    fin_nueva = sesion_actual.fin
+
+    # Query para buscar reservas que se solapen en el tiempo PARA LA MISMA COMUNIDAD
+    reservas_en_conflicto = session.exec(
+        select(Reserva)
+        .join(Sesion, Reserva.id_sesion == Sesion.id_sesion)
+        .where(
+            Reserva.id_cliente == cliente_id,
+            Reserva.id_comunidad == id_comunidad,  # <-- ¡Clave! Solo en la misma comunidad
+            Reserva.estado_reserva.in_(["confirmada", "formulario_pendiente"]),
+            inicio_nueva < Sesion.fin,
+            fin_nueva > Sesion.inicio
+        )
+    ).all()
+
+    if reservas_en_conflicto:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Ya tienes otra sesión activa que se cruza con ese horario en esta comunidad."
+        )
+
+
+def crear_reserva(
+    session: Session,
+    id_sesion: int,
+    cliente_id: int
+) -> Reserva:
+    """
+    Inserta una nueva reserva activa y retorna el objeto.
+    """
+    nueva = Reserva(
+        id_sesion=id_sesion,
+        id_cliente=cliente_id,
+        estado_reserva="confirmada"
+    )
+    session.add(nueva)
+    session.flush()  # asegura que nueva.id_reserva esté poblado
+    return nueva
+
+
+def crear_sesion_con_tipo(
+    session: Session,
+    id_servicio: int,
+    tipo: str,
+    descripcion: str,
+    inicio: datetime,
+    fin: datetime,
+    url_archivo: Optional[str] = None
+) -> Sesion:
+    """
+    Crea una Sesion y, si es de tipo 'Virtual', crea también su SesionVirtual asociada.
+    """
+    sesion_obj = Sesion(
+        id_servicio=id_servicio,
+        tipo=tipo,
+        descripcion=descripcion,
+        inicio=inicio,
+        fin=fin,
+        fecha_creacion=datetime.now(timezone.utc),
+        estado=True
+    )
+
+    session.add(sesion_obj)
+    session.flush()  # Flush to get sesion_obj.id_sesion
+
+    if tipo == "Virtual":
+        sesion_virtual_obj = SesionVirtual(
+            id_sesion=sesion_obj.id_sesion,
+            url_archivo=url_archivo
+        )
+        session.add(sesion_virtual_obj)
+        session.flush()
+
+    session.commit() # Commit the session and sesion_virtual (if created)
+    session.refresh(sesion_obj)
+    return sesion_obj
+
+
+def obtener_url_archivo_virtual(session: Session, id_sesion: int) -> str | None:
+    """
+    Retorna la URL de archivo asociada a una sesión virtual, si existe.
+    """
+    sv = session.exec(
+        select(SesionVirtual).where(SesionVirtual.id_sesion == id_sesion)
+    ).first()
+    return sv.url_archivo if sv else None
+
+
+def reservar_sesion_virtual(
+    session: Session,
+    id_sesion: int,
+    cliente_id: int,
+    usuario_id: int,
+    id_comunidad: int
+) -> Reserva:
+    """
+    Servicio que bloquea la fila de Sesion, valida unicidad solo en Virtual,
+    y crea la reserva, todo dentro de un SAVEPOINT (begin_nested).
+    """
+    try:
+        # 1) Savepoint en lugar de nueva transacción
+        with session.begin_nested():
+            # SELECT FOR UPDATE bajo ese SAVEPOINT
+            sesion = session.exec(
+                select(Sesion)
+                  .where(Sesion.id_sesion == id_sesion)
+                  .with_for_update()
+            ).one_or_none()
+            if not sesion:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "Sesión no encontrada.")
+
+            # Solo para Virtual: validar que no haya reserva activa
+            if sesion.tipo == "Virtual":
+                existe = session.exec(
+                    select(Reserva)
+                    .where(
+                        Reserva.id_sesion == id_sesion,
+                        Reserva.estado_reserva.in_(["confirmada", "formulario_pendiente"])
+                    )
+                    .with_for_update()
+                ).first()
+                if existe:
+                    raise HTTPException(
+                        status.HTTP_409_CONFLICT,
+                        "Ya existe una reserva activa para esta sesión virtual."
+                    )
+
+            # Validación de conflictos horario
+            validar_cliente_sin_conflicto(session, cliente_id, sesion, id_comunidad)
+
+            # Crear la reserva dentro del mismo SAVEPOINT
+            nueva_reserva = Reserva(
+                id_sesion      = id_sesion,
+                id_cliente     = cliente_id,
+                id_comunidad    = id_comunidad, 
+                estado_reserva = "formulario_pendiente",
+                fecha_reservada=sesion.inicio,
+                creado_por=usuario_id,
+                fecha_creacion = datetime.now(timezone.utc)
+            )
+            session.add(nueva_reserva)
+            session.flush()
+
+        # 2) Al salir del begin_nested() hacemos release savepoint, pero la tx sigue abierta.
+        # 3) Aquí no hay más excepciones: FastAPI/tu router hará el commit final.
+        return nueva_reserva
+
+    except HTTPException as e:
+        raise
+
+    except IntegrityError as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Error de integridad al crear la reserva: {e.orig}"
+        )
+
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(
+            status_code=500, detail=f"Error interno al crear la reserva: {e}"
+        )
+    
 def obtener_resumen_reserva_presencial(db: Session, id_sesion: int, id_usuario: int):
     # 1. Obtener datos del usuario
     usuario = db.get(Usuario, id_usuario)
@@ -378,7 +590,7 @@ def crear_reserva_presencial(db: Session, id_sesion: int, id_usuario: int, bg_ta
         if not servicio:
             return None, "No se encontró el servicio asociado"
 
-        # 4. VERIFICAR CRUCE DE HORARIOS EN LA MISMA COMUNIDAD (esto reemplaza la llamada anterior)
+        # 4. VERIFICAR CRUCE DE HORARIOS EN LA MISMA COMUNIDAD
         comunidad_link = db.exec(
             select(ComunidadXServicio).where(ComunidadXServicio.id_servicio == servicio.id_servicio)
         ).first()
@@ -386,8 +598,10 @@ def crear_reserva_presencial(db: Session, id_sesion: int, id_usuario: int, bg_ta
             return None, "El servicio no está asociado a ninguna comunidad."
         id_comunidad = comunidad_link.id_comunidad
 
-        if verificar_cruce_de_reservas(db, cliente.id_cliente, id_comunidad, sesion.inicio, sesion.fin):
-            return None, "Tienes otra reserva que se cruza con este horario en la misma comunidad."
+        try:
+            validar_cliente_sin_conflicto(db, cliente.id_cliente, sesion, id_comunidad)
+        except HTTPException as e:
+            return None, e.detail
 
         # 5. Chequear topes del plan
         topes_disponibles_actual = None

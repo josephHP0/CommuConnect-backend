@@ -65,6 +65,7 @@ class Reserva(SQLModel, table=True):
     id_reserva: Optional[int] = Field(default=None, primary_key=True)
     id_sesion:   Optional[int] = Field(default=None, foreign_key="sesion.id_sesion")
     id_cliente:  Optional[int] = Field(default=None, foreign_key="cliente.id_cliente")
+    id_comunidad: Optional[int] = Field(default=None, foreign_key="comunidad.id_comunidad")
 
     fecha_reservada: Optional[datetime] = Field(default=None)
     estado_reserva:  Optional[str]      = Field(default=None, max_length=45)
