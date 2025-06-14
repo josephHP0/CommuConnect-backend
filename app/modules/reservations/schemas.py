@@ -44,11 +44,13 @@ class ListaSesionesPresencialesResponse(BaseModel):
 
 class ReservaCreate(BaseModel):
     id_sesion: int  # ID de la sesión virtual a reservar
+    id_comunidad: int  
 
 class ReservaOut(BaseModel):
     id_reserva: int
     id_sesion: int
     id_cliente: int
+    id_comunidad: int
     estado_reserva: str
     fecha_reserva: Optional[datetime] = None
     url_archivo: Optional[str] = None

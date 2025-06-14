@@ -387,7 +387,8 @@ def reservar_sesion_virtual(
     session: Session,
     id_sesion: int,
     cliente_id: int,
-    usuario_id: int
+    usuario_id: int,
+    id_comunidad: int
 ) -> Reserva:
     """
     Servicio que bloquea la fila de Sesion, valida unicidad solo en Virtual,
@@ -428,6 +429,7 @@ def reservar_sesion_virtual(
             reserva = Reserva(
                 id_sesion      = id_sesion,
                 id_cliente     = cliente_id,
+                id_comunidad    = id_comunidad, 
                 estado_reserva = "formulario_pendiente",
                 fecha_reservada=sesion.inicio,
                 creado_por=usuario_id,

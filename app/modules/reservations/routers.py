@@ -192,7 +192,9 @@ def create_reserva_virtual(
     """
     try:
         # 1) Llamamos al service, que solo añade y hace flush
-        reserva = reservar_sesion_virtual(session, reserva_in.id_sesion, cliente_id, usuario.id_usuario)
+        reserva = reservar_sesion_virtual(
+            session, reserva_in.id_sesion, cliente_id, usuario.id_usuario,
+            id_comunidad=reserva_in.id_comunidad )
 
         # 2) Si no hubo excepción, confirmamos la transacción
         session.commit()
@@ -204,6 +206,7 @@ def create_reserva_virtual(
             id_reserva=reserva.id_reserva,
             id_sesion=reserva.id_sesion,
             id_cliente=reserva.id_cliente,
+            id_comunidad=reserva.id_comunidad, 
             estado_reserva=reserva.estado_reserva,
             fecha_reserva=reserva.fecha_creacion,
             url_archivo=url_archivo
