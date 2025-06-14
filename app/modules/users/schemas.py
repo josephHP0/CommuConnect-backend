@@ -1,6 +1,7 @@
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, validator
 from typing import Literal, Optional
 from datetime import date, datetime
+from utils.datetime_utils import convert_utc_to_local
 
 from app.core.enums import TipoDocumento, TipoUsuario
 
@@ -19,6 +20,12 @@ class UsuarioRead(UsuarioBase):
     id_usuario: int
     estado: bool
     fecha_creacion: Optional[datetime]
+
+    @validator('fecha_creacion', pre=True, always=True)
+    def localize_dates(cls, v):
+        if v:
+            return convert_utc_to_local(v)
+        return v
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -61,8 +68,8 @@ class AdministradorRead(BaseModel):
 class ClienteUpdate(BaseModel):
     nombre: Optional[str]
     apellido: Optional[str]
-    email: Optional[str]
-    password: Optional[str]  # <-- Añadido para permitir cambio de contraseña
+    email: Optional[str]  # <-- Añadido para permitir cambio de contraseña
+    password: Optional[str]
     tipo_documento: Optional[str]
     num_doc: Optional[str]
     numero_telefono: Optional[str]
@@ -104,6 +111,12 @@ class UsuarioClienteFull(BaseModel):
     modificado_por: Optional[str]
     estado: bool
     cliente: Optional[ClienteInfo]
+
+    @validator('fecha_creacion', 'fecha_modificacion', pre=True, always=True)
+    def localize_dates(cls, v):
+        if v:
+            return convert_utc_to_local(v)
+        return v
 
     class Config:
         from_attributes = True

@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 from datetime import datetime, timedelta
+from utils.datetime_utils import convert_utc_to_local
 
 # Re-using test data and user creation logic can be done by importing from conftest or another shared module
 # For simplicity here, we define what's needed.
@@ -79,9 +80,10 @@ def test_list_reservations_by_user_community(client: TestClient, session_test: S
     assert reserva_resp["id_reserva"] == reserva.id_reserva
     assert reserva_resp["nombre_servicio"] == servicio.nombre
     
-    # Check date and time separately
-    expected_fecha = fecha_inicio.strftime("%d/%m/%Y")
-    expected_hora_inicio = fecha_inicio.strftime("%H:%M")
+    # Convertir la fecha original a la zona horaria local para la comparación
+    local_fecha_inicio = convert_utc_to_local(fecha_inicio)
+    expected_fecha = local_fecha_inicio.strftime("%d/%m/%Y")
+    expected_hora_inicio = local_fecha_inicio.strftime("%H:%M")
     
     assert reserva_resp["fecha"] == expected_fecha
     assert reserva_resp["hora_inicio"] == expected_hora_inicio

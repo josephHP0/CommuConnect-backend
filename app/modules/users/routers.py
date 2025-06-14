@@ -32,8 +32,27 @@ from app.modules.billing.services import (
 
 router = APIRouter()
 
-@router.post("/usuario", response_model=UsuarioRead)
+@router.post("/usuario", response_model=UsuarioRead, status_code=status.HTTP_201_CREATED)
 def registrar_usuario(usuario: UsuarioCreate, db: Session = Depends(get_session)):
+    """
+    Registra un nuevo usuario en el sistema.
+    - **email**: No debe existir en la base de datos.
+    - **nombre**: No debe existir en la base de datos.
+    """
+    db_user_by_email = db.exec(select(Usuario).where(Usuario.email == usuario.email)).first()
+    if db_user_by_email:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El email ya está registrado."
+        )
+
+    db_user_by_name = db.exec(select(Usuario).where(Usuario.nombre == usuario.nombre)).first()
+    if db_user_by_name:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="El nombre de usuario ya está en uso."
+        )
+        
     try:
         nuevo_usuario = crear_usuario(db, usuario)
         logger.info(f"Usuario registrado: {usuario.email}")

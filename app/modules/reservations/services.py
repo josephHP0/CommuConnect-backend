@@ -22,6 +22,7 @@ from utils.email_brevo import send_reservation_email
 from fastapi import BackgroundTasks
 from app.modules.communities.models import Comunidad
 from datetime import datetime, timezone
+from utils.datetime_utils import convert_utc_to_local, convert_local_to_utc
 
 def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_comunidad: int, fecha: date):
     end_date = fecha + timedelta(days=7)
@@ -103,17 +104,21 @@ def obtener_horas_presenciales(
     # 1) Validar que el local exista y pertenezca al distrito
     local_obj = session.get(Local, id_local)
     if not local_obj or local_obj.id_distrito != id_distrito:
-        # En lugar de devolver [], podrías optar por lanzar excepción y que el router la traduzca a 404
         return []
 
-    # 2) Armar la consulta para extraer la HORA de inicio de Sesion para esa fecha
-    #
-    #    - func.date(Sesion.inicio) extrae solo la fecha
-    #    - func.time(Sesion.inicio) (o concatenación/func.hour+func.minute) extrae la hora
-    #      exacta en formato HH:MM:SS. MySQL y la mayoría de DB soportan func.time()
-    #
+    # 2) Convertir la fecha local a un rango UTC para la consulta
+    start_of_day_local = datetime.combine(fecha_seleccionada, time.min)
+    end_of_day_local = datetime.combine(fecha_seleccionada, time.max)
+    
+    start_of_day_utc = convert_local_to_utc(start_of_day_local)
+    end_of_day_utc = convert_local_to_utc(end_of_day_local)
+
+    if not start_of_day_utc or not end_of_day_utc:
+        return [] # No se pudo convertir la zona horaria
+
+    # 3) Armar la consulta para extraer la HORA de inicio de Sesion para esa fecha
     stmt = (
-        select(func.time(Sesion.inicio).label("solo_hora"))
+        select(Sesion.inicio) # Pedimos el datetime completo
         .join(
             SesionPresencial,
             SesionPresencial.id_sesion == Sesion.id_sesion
@@ -125,33 +130,27 @@ def obtener_horas_presenciales(
         .where(
             Sesion.id_servicio == id_servicio,
             Sesion.tipo == "Presencial",
-            func.date(Sesion.inicio) == fecha_seleccionada,  # filtro por la fecha_entera
+            Sesion.inicio >= start_of_day_utc, # Filtro por rango UTC
+            Sesion.inicio <= end_of_day_utc,
             SesionPresencial.id_local == id_local,
             Local.id_distrito == id_distrito,
         )
-        .distinct()  # para que no se repitan varias sesiones en la misma hora exacta
+        .distinct()
     )
 
     raw_results = session.exec(stmt).all()
-    # `raw_results` puede venir como [(time1,), (time2,), …] o [time1, time2, …]
-    horas_objeto = [
-        (row[0] if isinstance(row, tuple) else row) for row in raw_results
-    ]
+    
+    # 4) Convertir los datetimes UTC a horas locales y formatear
+    horas_locales: List[str] = []
+    for dt_utc in raw_results:
+        # raw_results ahora es una lista de datetimes
+        local_dt = convert_utc_to_local(dt_utc)
+        if local_dt:
+            horas_locales.append(local_dt.strftime("%H:%M"))
 
-    horas_iso: List[str] = []
-    for t in horas_objeto:
-        if isinstance(t, time) or isinstance(t, datetime):
-            horas_iso.append(t.strftime("%H:%M:%S"))
-        else:
-            # Si viniera timedelta (p. ej. SQLite):
-            total = int(t.total_seconds())
-            h = total // 3600
-            m = (total % 3600) // 60
-            s = total % 60
-            horas_iso.append(f"{h:02d}:{m:02d}")
+    horas_locales.sort()
 
-    # 6) Devolver el JSON con la lista de strings "HH:MM:SS"
-    return horas_iso
+    return horas_locales
 
 def listar_sesiones_presenciales_detalladas(
     session: Session,
@@ -166,11 +165,27 @@ def listar_sesiones_presenciales_detalladas(
     if not local_obj or local_obj.id_distrito != id_distrito:
         return None
 
-    # 2) Parsear la hora y formatear a HH:MM:SS
-    hora_dt = datetime.strptime(hora_inicio, "%H:%M").time()
-    hora_str_mysql = hora_dt.strftime("%H:%M:%S")  # → "10:00:00"
+    # --- INICIO DEL CAMBIO ---
+    # 2) Combinar fecha y hora local, y convertir a UTC
+    try:
+        hora_dt_obj = datetime.strptime(hora_inicio, "%H:%M").time()
+    except ValueError:
+        # Si la hora no es válida, no habrá sesiones.
+        return []
+        
+    local_dt = datetime.combine(fecha_seleccionada, hora_dt_obj)
+    utc_dt = convert_local_to_utc(local_dt)
 
-    # 3) Hacer la consulta filtrando por fecha y luego por TIME()
+    if not utc_dt:
+        # Esto no debería pasar si la fecha y hora son válidas, pero es una buena práctica
+        return []
+
+    # Extraemos la fecha y hora UTC para la consulta
+    fecha_utc = utc_dt.date()
+    hora_utc_str = utc_dt.strftime("%H:%M:%S")
+    # --- FIN DEL CAMBIO ---
+
+    # 3) Hacer la consulta filtrando con los valores UTC
     stmt = (
         select(
             Sesion.id_sesion,
@@ -178,7 +193,7 @@ def listar_sesiones_presenciales_detalladas(
             func.date(Sesion.inicio).label("fecha"),
             Sesion.inicio.label("dt_inicio"),
             Sesion.fin.label("dt_fin"),
-            SesionPresencial.creado_por.label("responsable"),
+            Local.responsable.label("responsable"),
             SesionPresencial.capacidad.label("vacantes_totales"),
             Local.nombre.label("ubicacion"),
         )
@@ -187,8 +202,8 @@ def listar_sesiones_presenciales_detalladas(
         .where(
             Sesion.id_servicio      == id_servicio,
             Sesion.tipo             == "Presencial",
-            func.date(Sesion.inicio)== fecha_seleccionada,
-            func.time(Sesion.inicio)== hora_str_mysql,    # aquí MySQL TIME()
+            func.date(Sesion.inicio)== fecha_utc, # Usar fecha UTC
+            func.time(Sesion.inicio)== hora_utc_str,    # Usar hora UTC
             SesionPresencial.id_local == id_local,
             Local.id_distrito       == id_distrito,
         )
@@ -201,6 +216,11 @@ def listar_sesiones_presenciales_detalladas(
         dt_inicio, dt_fin,
         responsable, vac_tot, ubicacion
     ) in rows:
+        # --- INICIO DEL CAMBIO ---
+        local_inicio = convert_utc_to_local(dt_inicio)
+        local_fin = convert_utc_to_local(dt_fin)
+        # --- FIN DEL CAMBIO ---
+
         # 4) contar confirmadas, calcular vacantes_libres…
         total_confirmadas = session.exec(
             select(func.count(Reserva.id_reserva))
@@ -214,11 +234,11 @@ def listar_sesiones_presenciales_detalladas(
         resultado.append({
             "id_sesion":           id_ses,
             "id_sesion_presencial":id_ses_pres,
-            "fecha":               fecha_sesion,
+            "fecha":               local_inicio.date() if local_inicio else fecha_sesion,
             "ubicacion":           ubicacion,
             "responsable":         responsable,
-            "hora_inicio":           dt_inicio.strftime("%H:%M"),
-            "hora_fin":              dt_fin.strftime("%H:%M"),
+            "hora_inicio":         local_inicio.strftime("%H:%M") if local_inicio else "N/A",
+            "hora_fin":            local_fin.strftime("%H:%M") if local_fin else "N/A",
             "vacantes_totales":    vac_tot,
             "vacantes_libres":     vac_libres,
         })
@@ -237,16 +257,18 @@ def obtener_fechas_inicio_por_profesional(db: Session, id_profesional: int):
     if not resultados:
         return None
 
-    fechas_formateadas = [
-        {
-            "id_sesion_virtual": sv.id_sesion_virtual,
-            "id_sesion": sv.sesion.id_sesion if sv.sesion else None,
-            "dia": sv.sesion.inicio.strftime("%Y-%m-%d") if sv.sesion and sv.sesion.inicio else None,
-            "hora": sv.sesion.inicio.strftime("%H:%M:%S") if sv.sesion and sv.sesion.inicio else None
-        }
-        for sv in resultados
-        if sv.sesion and sv.sesion.inicio
-    ]
+    fechas_formateadas = []
+    for sv in resultados:
+        if sv.sesion and sv.sesion.inicio:
+            # --- INICIO DEL CAMBIO ---
+            local_inicio = convert_utc_to_local(sv.sesion.inicio)
+            # --- FIN DEL CAMBIO ---
+            fechas_formateadas.append({
+                "id_sesion_virtual": sv.id_sesion_virtual,
+                "id_sesion": sv.sesion.id_sesion,
+                "dia": local_inicio.strftime("%Y-%m-%d") if local_inicio else None,
+                "hora": local_inicio.strftime("%H:%M:%S") if local_inicio else None
+            })
     return fechas_formateadas
 
 def existe_reserva_para_usuario(db: Session, id_sesion: int, id_usuario: int) -> bool:
@@ -471,15 +493,19 @@ def obtener_resumen_reserva_presencial(db: Session, id_sesion: int, id_usuario: 
         responsable, vac_tot, ubicacion
     ) = sesion_data
 
+    # --- INICIO DEL CAMBIO ---
+    local_inicio = convert_utc_to_local(dt_inicio)
+    local_fin = convert_utc_to_local(dt_fin)
+    # --- FIN DEL CAMBIO ---
 
     resumen = {
         "id_sesion": id_ses,
         "id_sesion_presencial": id_ses_pres,
-        "fecha": fecha_sesion,
+        "fecha": local_inicio.date() if local_inicio else fecha_sesion,
         "ubicacion": ubicacion,
         "responsable": responsable,
-        "hora_inicio": dt_inicio.strftime("%H:%M"),
-        "hora_fin": dt_fin.strftime("%H:%M"),
+        "hora_inicio": local_inicio.strftime("%H:%M") if local_inicio else "N/A",
+        "hora_fin": local_fin.strftime("%H:%M") if local_fin else "N/A",
         "vacantes_totales": vac_tot,
         "nombres": usuario.nombre,
         "apellidos": usuario.apellido
@@ -487,7 +513,7 @@ def obtener_resumen_reserva_presencial(db: Session, id_sesion: int, id_usuario: 
     
     return resumen, None
 
-def crear_reserva(db: Session, id_sesion: int, id_usuario: int, bg_tasks: BackgroundTasks):
+def crear_reserva_presencial(db: Session, id_sesion: int, id_usuario: int, bg_tasks: BackgroundTasks):
     with db.begin_nested():
         # 1. Buscar el cliente y su usuario
         cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
@@ -565,13 +591,18 @@ def crear_reserva(db: Session, id_sesion: int, id_usuario: int, bg_tasks: Backgr
         db.add(nueva_reserva)
         db.flush() 
 
+        # --- INICIO DEL CAMBIO ---
+        local_inicio = convert_utc_to_local(sesion.inicio)
+        local_fin = convert_utc_to_local(sesion.fin)
+        # --- FIN DEL CAMBIO ---
+
         # 8. Preparar y devolver detalles
         response_details = {
             "id_reserva": nueva_reserva.id_reserva,
             "nombre_servicio": servicio.nombre,
-            "fecha": sesion.inicio.date(),
-            "hora_inicio": sesion.inicio.time(),
-            "hora_fin": sesion.fin.time(),
+            "fecha": local_inicio.date() if local_inicio else None,
+            "hora_inicio": local_inicio.time() if local_inicio else None,
+            "hora_fin": local_fin.time() if local_fin else None,
             "ubicacion": local.nombre,
             "direccion_detallada": local.direccion_detallada,
             "nombre_cliente": usuario.nombre,
@@ -623,7 +654,7 @@ def obtener_resumen_sesion_presencial(db: Session, id_sesion: int):
     
     summary = {
         "nombre_servicio": nombre_servicio,
-        "fecha": inicio.strftime("%Y-%m-%d"),
+        "fecha": inicio.strftime("%d/%m/%Y"),
         "hora_inicio": inicio.strftime("%H:%M"),
         "hora_fin": fin.strftime("%H:%M"),
         "ubicacion": nombre_local,
@@ -633,3 +664,62 @@ def obtener_resumen_sesion_presencial(db: Session, id_sesion: int):
     }
     
     return summary, None
+
+def get_reservation_details(db: Session, id_reserva: int, id_usuario: int):
+    # 1. Validar que la reserva existe y pertenece al usuario
+    reserva = db.get(Reserva, id_reserva)
+    cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
+
+    if not reserva or not cliente or reserva.id_cliente != cliente.id_cliente:
+        return None, "Reserva no encontrada o no pertenece al usuario."
+
+    # 2. Obtener la sesión y el servicio
+    sesion = db.get(Sesion, reserva.id_sesion)
+    if not sesion:
+        return None, "Sesión asociada no encontrada."
+    
+    servicio = db.get(Servicio, sesion.id_servicio)
+    if not servicio:
+        return None, "Servicio asociado no encontrado."
+
+    # Convertir las horas a la zona horaria local
+    local_inicio = convert_utc_to_local(sesion.inicio)
+    local_fin = convert_utc_to_local(sesion.fin)
+
+    formulario_completado = sesion.tipo == "Virtual" and reserva.archivo is not None
+
+    response_data = {
+        "nombre_servicio": servicio.nombre,
+        "fecha": local_inicio.date() if local_inicio else None,
+        "hora_inicio": local_inicio.time() if local_inicio else None,
+        "hora_fin": local_fin.time() if local_fin else None,
+        "tipo_sesion": sesion.tipo,
+        "responsable": None,
+        "nombre_local": None,
+        "direccion": None,
+        "url_meeting": None,
+        "nombre_profesional": None,
+        "formulario_completado": formulario_completado
+    }
+
+    # 3. Obtener detalles específicos según el tipo de sesión
+    if sesion.tipo == "Presencial":
+        sesion_presencial = db.exec(select(SesionPresencial).where(SesionPresencial.id_sesion == sesion.id_sesion)).first()
+        if sesion_presencial:
+            local = db.get(Local, sesion_presencial.id_local)
+            if local:
+                response_data["responsable"] = local.responsable
+                response_data["nombre_local"] = local.nombre or "Nombre no disponible"
+                response_data["direccion"] = local.direccion_detallada or "Dirección no especificada"
+
+    elif sesion.tipo == "Virtual":
+        from app.modules.services.models import Profesional
+        sesion_virtual = db.exec(select(SesionVirtual).where(SesionVirtual.id_sesion == sesion.id_sesion)).first()
+        if sesion_virtual:
+            response_data["url_meeting"] = sesion_virtual.url_meeting or "Link no disponible"
+            if sesion_virtual.id_profesional:
+                profesional = db.get(Profesional, sesion_virtual.id_profesional)
+                if profesional:
+                    response_data["nombre_profesional"] = profesional.nombre_completo
+
+    return response_data, None

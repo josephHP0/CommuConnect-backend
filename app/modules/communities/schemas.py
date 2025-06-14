@@ -1,10 +1,11 @@
 import base64
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, validator
 from app.modules.services.schemas import ServicioResumen
 from typing import List, Optional
 from app.modules.services.schemas import ServicioOut
+from utils.datetime_utils import convert_utc_to_local
 
 class ComunidadCreate(BaseModel):
     nombre: str
@@ -22,6 +23,13 @@ class ComunidadRead(BaseModel):
     fecha_modificacion: Optional[datetime]
     modificado_por: Optional[str]
     estado: bool
+
+    @validator('fecha_creacion', 'fecha_modificacion', pre=True, always=True)
+    def localize_dates(cls, v):
+        if v:
+            return convert_utc_to_local(v)
+        return v
+
     class Config:
         orm_mode = True
     @classmethod
@@ -38,9 +46,15 @@ class ComunidadOut(BaseModel):
     imagen: Optional[str] = None
     fecha_creacion: datetime
     creado_por: str
-    fecha_modificacion: Optional[datetime] = None  # <-- Permitir None
-    modificado_por: Optional[str] = None           # <-- Permitir None
+    fecha_modificacion: Optional[datetime] = None
+    modificado_por: Optional[str] = None
     estado: int
+
+    @validator('fecha_creacion', 'fecha_modificacion', pre=True, always=True)
+    def localize_dates(cls, v):
+        if v:
+            return convert_utc_to_local(v)
+        return v
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,10 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 
 from app.core.enums import ModalidadServicio
+from utils.datetime_utils import convert_utc_to_local
 
 class ServicioResumen(BaseModel):
     nombre: str
@@ -61,6 +62,12 @@ class ServicioRead(BaseModel):
     fecha_modificacion: Optional[datetime]
     modificado_por: Optional[str]
     estado: bool
+
+    @validator('fecha_creacion', 'fecha_modificacion', pre=True, always=True)
+    def localize_dates(cls, v):
+        if v:
+            return convert_utc_to_local(v)
+        return v
 
     class Config:
         orm_mode = True
