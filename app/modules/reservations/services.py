@@ -411,7 +411,7 @@ def reservar_sesion_virtual(
                     select(Reserva)
                     .where(
                         Reserva.id_sesion == id_sesion,
-                        Reserva.estado_reserva == "Activa"
+                        Reserva.estado == 1
                     )
                     .with_for_update()
                 ).first()
@@ -428,7 +428,7 @@ def reservar_sesion_virtual(
             reserva = Reserva(
                 id_sesion      = id_sesion,
                 id_cliente     = cliente_id,
-                estado_reserva = "Activa",
+                estado_reserva = "formulario_pendiente",
                 fecha_reservada=sesion.inicio,
                 creado_por=usuario_id,
                 fecha_creacion = datetime.now(timezone.utc)
