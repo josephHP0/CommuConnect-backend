@@ -67,7 +67,7 @@ class ReservaPresencialSummary(SesionPresencialOut):
 class ReservaRequest(BaseModel):
     id_sesion: int
 
-class ReservaResponse(BaseModel):
+class ReservaCreadaResponse(BaseModel):
     id_reserva: int
     id_sesion: int
     id_cliente: int
@@ -129,17 +129,18 @@ class ListaReservasComunidadResponse(BaseModel):
         orm_mode = True
 
 class ReservaDetailScreenResponse(BaseModel):
+    id_reserva: int
     nombre_servicio: str
-    fecha: date
-    hora_inicio: time
-    hora_fin: time
-    responsable: Optional[str] = None
+    fecha: Optional[date] = None
+    hora_inicio: Optional[time] = None
+    hora_fin: Optional[time] = None
     tipo_sesion: str
+    responsable: Optional[str] = None
     nombre_local: Optional[str] = None
     direccion: Optional[str] = None
     url_meeting: Optional[str] = None
     nombre_profesional: Optional[str] = None
-    formulario_completado: bool
+    estado_reserva: str
 
     class Config:
         orm_mode = True

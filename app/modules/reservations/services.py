@@ -19,7 +19,7 @@ from app.modules.billing.services import (
 )
 from app.modules.billing.models import DetalleInscripcion
 from utils.email_brevo import send_reservation_email
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException
 from app.modules.communities.models import Comunidad
 from datetime import datetime, timezone
 from utils.datetime_utils import convert_utc_to_local, convert_local_to_utc
@@ -45,6 +45,7 @@ def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_co
         .where(ComunidadXServicio.id_comunidad == id_comunidad)
         .where(func.date(Sesion.inicio) >= fecha)
         .where(func.date(Sesion.inicio) < end_date)
+        .where(Reserva.estado_reserva.in_(['confirmada', 'formulario_pendiente']))
     )
     
     reservas = db.exec(stmt).all()
@@ -548,18 +549,18 @@ def crear_reserva_presencial(db: Session, id_sesion: int, id_usuario: int, bg_ta
         if not servicio:
             return None, "No se encontró el servicio asociado"
 
-        # 4. Verificar reserva existente
-        if existe_reserva_para_usuario(db, id_sesion, id_usuario):
-            return None, "Ya existe una reserva para esta sesión"
-
-        # 5. Chequear topes del plan
+        # 4. VERIFICAR CRUCE DE HORARIOS EN LA MISMA COMUNIDAD (esto reemplaza la llamada anterior)
         comunidad_link = db.exec(
             select(ComunidadXServicio).where(ComunidadXServicio.id_servicio == servicio.id_servicio)
         ).first()
         if not comunidad_link:
-            return None, "No se encontró la comunidad para este servicio"
+            return None, "El servicio no está asociado a ninguna comunidad."
         id_comunidad = comunidad_link.id_comunidad
-        
+
+        if verificar_cruce_de_reservas(db, cliente.id_cliente, id_comunidad, sesion.inicio, sesion.fin):
+            return None, "Tienes otra reserva que se cruza con este horario en la misma comunidad."
+
+        # 5. Chequear topes del plan
         topes_disponibles_actual = None
         topes_consumidos_actual = None
         try:
@@ -668,29 +669,34 @@ def obtener_resumen_sesion_presencial(db: Session, id_sesion: int):
     return summary, None
 
 def get_reservation_details(db: Session, id_reserva: int, id_usuario: int):
+    """
+    Obtiene los detalles de una reserva específica para la pantalla de detalle,
+    diferenciando entre sesiones presenciales y virtuales.
+    """
     # 1. Validar que la reserva existe y pertenece al usuario
-    reserva = db.get(Reserva, id_reserva)
     cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
 
-    if not reserva or not cliente or reserva.id_cliente != cliente.id_cliente:
-        return None, "Reserva no encontrada o no pertenece al usuario."
+    reserva = db.get(Reserva, id_reserva)
+    if not reserva or reserva.id_cliente != cliente.id_cliente:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada o no pertenece al usuario.")
 
-    # 2. Obtener la sesión y el servicio
+    # 2. Cargar la sesión y el servicio asociados
     sesion = db.get(Sesion, reserva.id_sesion)
     if not sesion:
-        return None, "Sesión asociada no encontrada."
+        raise HTTPException(status_code=404, detail="La sesión para esta reserva ya no existe.")
     
     servicio = db.get(Servicio, sesion.id_servicio)
     if not servicio:
-        return None, "Servicio asociado no encontrado."
+        raise HTTPException(status_code=404, detail="El servicio para esta reserva ya no existe.")
 
-    # Convertir las horas a la zona horaria local
+    # 3. Preparar la respuesta base
     local_inicio = convert_utc_to_local(sesion.inicio)
     local_fin = convert_utc_to_local(sesion.fin)
-
-    formulario_completado = sesion.tipo == "Virtual" and reserva.archivo is not None
-
+    
     response_data = {
+        "id_reserva": id_reserva,
         "nombre_servicio": servicio.nombre,
         "fecha": local_inicio.date() if local_inicio else None,
         "hora_inicio": local_inicio.time() if local_inicio else None,
@@ -701,10 +707,10 @@ def get_reservation_details(db: Session, id_reserva: int, id_usuario: int):
         "direccion": None,
         "url_meeting": None,
         "nombre_profesional": None,
-        "formulario_completado": formulario_completado
+        "estado_reserva": reserva.estado_reserva
     }
 
-    # 3. Obtener detalles específicos según el tipo de sesión
+    # 4. Obtener detalles específicos según el tipo de sesión
     if sesion.tipo == "Presencial":
         sesion_presencial = db.exec(select(SesionPresencial).where(SesionPresencial.id_sesion == sesion.id_sesion)).first()
         if sesion_presencial:
@@ -725,3 +731,60 @@ def get_reservation_details(db: Session, id_reserva: int, id_usuario: int):
                     response_data["nombre_profesional"] = profesional.nombre_completo
 
     return response_data, None
+
+def cancelar_reserva_por_id(db: Session, id_reserva: int, id_usuario: int):
+    """
+    Cancela una reserva cambiando su estado a 'cancelada'.
+    No devuelve el cupo/crédito al usuario.
+    """
+    # 1. Buscar al cliente
+    cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+
+    # 2. Buscar la reserva y validar que pertenece al cliente
+    reserva = db.get(Reserva, id_reserva)
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada.")
+    
+    if reserva.id_cliente != cliente.id_cliente:
+        raise HTTPException(status_code=403, detail="No tienes permiso para cancelar esta reserva.")
+
+    # 3. Validar que la reserva está en un estado cancelable
+    if reserva.estado_reserva != "confirmada":
+        raise HTTPException(
+            status_code=400,
+            detail=f"La reserva ya está en estado '{reserva.estado_reserva}' y no puede ser cancelada."
+        )
+
+    # 4. Cambiar el estado y guardar en la base de datos
+    reserva.estado_reserva = "cancelada"
+    reserva.modificado_por = str(id_usuario)
+    reserva.fecha_modificacion = datetime.utcnow()
+    
+    db.add(reserva)
+    db.commit()
+    db.refresh(reserva)
+    
+    return {"message": "Reserva cancelada exitosamente."}
+
+def verificar_cruce_de_reservas(db: Session, id_cliente: int, id_comunidad: int, inicio_nueva: datetime, fin_nueva: datetime) -> bool:
+    """
+    Verifica si un cliente ya tiene una reserva confirmada en una comunidad
+    que se cruce en tiempo con una nueva sesión.
+    """
+    reservas_existentes = db.exec(
+        select(Reserva)
+        .join(Sesion, Reserva.id_sesion == Sesion.id_sesion)
+        .join(Servicio, Sesion.id_servicio == Servicio.id_servicio)
+        .join(ComunidadXServicio, Servicio.id_servicio == ComunidadXServicio.id_servicio)
+        .where(
+            Reserva.id_cliente == id_cliente,
+            ComunidadXServicio.id_comunidad == id_comunidad,
+            Reserva.estado_reserva == "confirmada",
+            Sesion.inicio < fin_nueva,
+            Sesion.fin > inicio_nueva
+        )
+    ).first()
+
+    return reservas_existentes is not None

@@ -1,12 +1,12 @@
 from datetime import datetime, date
 from typing import List
 from fastapi import HTTPException
-from fastapi import APIRouter, Depends, Query, HTTPException, status
+from fastapi import APIRouter, Depends, Query, HTTPException, status, Path as FastPath
 from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.services.models import Local
-from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario, obtener_resumen_reserva_presencial, crear_reserva_presencial, listar_reservas_usuario_comunidad_semana, get_reservation_details
-from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ReservaDetailResponse, ListaReservasResponse, ListaReservasComunidadResponse, ReservaComunidadResponse, ReservaDetailScreenResponse
+from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario, obtener_resumen_reserva_presencial, crear_reserva_presencial, listar_reservas_usuario_comunidad_semana, get_reservation_details, cancelar_reserva_por_id
+from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ListaReservasResponse, ListaReservasComunidadResponse, ReservaComunidadResponse, ReservaDetailScreenResponse, ReservaCreadaResponse
 from app.modules.auth.dependencies import get_current_user  
 from app.modules.reservations.schemas import ReservaCreate, ReservaOut
 from app.modules.reservations.services import reservar_sesion_virtual, obtener_url_archivo_virtual
@@ -18,6 +18,7 @@ from fastapi import BackgroundTasks
 from app.modules.billing.services import obtener_inscripcion_activa, es_plan_con_topes, obtener_detalle_topes
 from app.modules.users.models import Cliente
 from utils.datetime_utils import convert_utc_to_local
+from app.modules.users.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -259,7 +260,7 @@ def get_resumen_reserva_presencial(
 
 @router.post(
     "/",
-    response_model=ReservaDetailResponse,
+    response_model=ReservaCreadaResponse,
     summary="Crea una nueva reserva para una sesión",
     status_code=status.HTTP_201_CREATED,
 )
@@ -334,7 +335,6 @@ def list_reservations_by_user_community(
     summary="Obtiene el detalle de una reserva para la pantalla de detalle",
 )
 def get_reservation_details_for_screen(
-    *,
     id_reserva: int,
     session: Session = Depends(get_session),
     current_user: Usuario = Depends(get_current_user),
@@ -344,8 +344,19 @@ def get_reservation_details_for_screen(
         id_reserva=id_reserva,
         id_usuario=current_user.id_usuario
     )
-
     if error:
         raise HTTPException(status_code=404, detail=error)
-
     return details
+
+@router.patch("/{id_reserva}/cancel", status_code=200)
+def cancel_reservation(
+    id_reserva: int = FastPath(..., title="ID de la Reserva a cancelar", ge=1),
+    db: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Cancela una reserva específica de un usuario.
+    """
+    id_usuario = current_user.id_usuario
+    result = cancelar_reserva_por_id(db=db, id_reserva=id_reserva, id_usuario=id_usuario)
+    return result
