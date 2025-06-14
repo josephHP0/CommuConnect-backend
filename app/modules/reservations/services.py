@@ -97,17 +97,21 @@ def obtener_horas_presenciales(
     # 1) Validar que el local exista y pertenezca al distrito
     local_obj = session.get(Local, id_local)
     if not local_obj or local_obj.id_distrito != id_distrito:
-        # En lugar de devolver [], podrías optar por lanzar excepción y que el router la traduzca a 404
         return []
 
-    # 2) Armar la consulta para extraer la HORA de inicio de Sesion para esa fecha
-    #
-    #    - func.date(Sesion.inicio) extrae solo la fecha
-    #    - func.time(Sesion.inicio) (o concatenación/func.hour+func.minute) extrae la hora
-    #      exacta en formato HH:MM:SS. MySQL y la mayoría de DB soportan func.time()
-    #
+    # 2) Convertir la fecha local a un rango UTC para la consulta
+    start_of_day_local = datetime.combine(fecha_seleccionada, time.min)
+    end_of_day_local = datetime.combine(fecha_seleccionada, time.max)
+    
+    start_of_day_utc = convert_local_to_utc(start_of_day_local)
+    end_of_day_utc = convert_local_to_utc(end_of_day_local)
+
+    if not start_of_day_utc or not end_of_day_utc:
+        return [] # No se pudo convertir la zona horaria
+
+    # 3) Armar la consulta para extraer la HORA de inicio de Sesion para esa fecha
     stmt = (
-        select(func.time(Sesion.inicio).label("solo_hora"))
+        select(Sesion.inicio) # Pedimos el datetime completo
         .join(
             SesionPresencial,
             SesionPresencial.id_sesion == Sesion.id_sesion
@@ -119,31 +123,27 @@ def obtener_horas_presenciales(
         .where(
             Sesion.id_servicio == id_servicio,
             Sesion.tipo == "Presencial",
-            func.date(Sesion.inicio) == fecha_seleccionada,  # filtro por la fecha_entera
+            Sesion.inicio >= start_of_day_utc, # Filtro por rango UTC
+            Sesion.inicio <= end_of_day_utc,
             SesionPresencial.id_local == id_local,
             Local.id_distrito == id_distrito,
         )
-        .distinct()  # para que no se repitan varias sesiones en la misma hora exacta
+        .distinct()
     )
 
     raw_results = session.exec(stmt).all()
     
-    # --- INICIO DEL CAMBIO ---
-    horas_iso: List[str] = []
-    for t in raw_results:
-        # raw_results puede ser una tupla (time,)
-        time_obj = t[0] if isinstance(t, tuple) else t
-        
-        # Creamos un datetime 'dummy' con la fecha de hoy para poder convertirlo
-        # ya que la función de conversión espera un datetime, no solo un time.
-        dummy_datetime_utc = datetime.combine(date.today(), time_obj)
-        local_dt = convert_utc_to_local(dummy_datetime_utc)
-        
+    # 4) Convertir los datetimes UTC a horas locales y formatear
+    horas_locales: List[str] = []
+    for dt_utc in raw_results:
+        # raw_results ahora es una lista de datetimes
+        local_dt = convert_utc_to_local(dt_utc)
         if local_dt:
-            horas_iso.append(local_dt.strftime("%H:%M:%S"))
-    # --- FIN DEL CAMBIO ---
+            horas_locales.append(local_dt.strftime("%H:%M"))
 
-    return horas_iso
+    horas_locales.sort()
+
+    return horas_locales
 
 def listar_sesiones_presenciales_detalladas(
     session: Session,
@@ -160,7 +160,12 @@ def listar_sesiones_presenciales_detalladas(
 
     # --- INICIO DEL CAMBIO ---
     # 2) Combinar fecha y hora local, y convertir a UTC
-    hora_dt_obj = datetime.strptime(hora_inicio, "%H:%M").time()
+    try:
+        hora_dt_obj = datetime.strptime(hora_inicio, "%H:%M").time()
+    except ValueError:
+        # Si la hora no es válida, no habrá sesiones.
+        return []
+        
     local_dt = datetime.combine(fecha_seleccionada, hora_dt_obj)
     utc_dt = convert_local_to_utc(local_dt)
 
@@ -181,7 +186,7 @@ def listar_sesiones_presenciales_detalladas(
             func.date(Sesion.inicio).label("fecha"),
             Sesion.inicio.label("dt_inicio"),
             Sesion.fin.label("dt_fin"),
-            SesionPresencial.creado_por.label("responsable"),
+            Local.responsable.label("responsable"),
             SesionPresencial.capacidad.label("vacantes_totales"),
             Local.nombre.label("ubicacion"),
         )

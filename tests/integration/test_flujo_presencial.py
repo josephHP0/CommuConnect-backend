@@ -2,6 +2,7 @@
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 from datetime import datetime, date
+from utils.datetime_utils import convert_utc_to_local
 
 def test_obtener_distritos_por_servicio(client: TestClient, session_test: Session):
     # 3) Llamar al endpoint
@@ -20,7 +21,7 @@ def test_obtener_distritos_por_servicio(client: TestClient, session_test: Sessio
 
 def test_obtener_locales_por_servicio_y_distrito(client: TestClient, session_test: Session):
 
-    # 4) Prueba “feliz”: debe devolver el local
+    # 4) Prueba "feliz": debe devolver el local
     url = "/api/services/servicio/10/distrito/39/locales"
     response = client.get(url)
     assert response.status_code == 200
@@ -30,7 +31,7 @@ def test_obtener_locales_por_servicio_y_distrito(client: TestClient, session_tes
     assert len(data) == 1
     assert data[0]["id_local"] == 5
 
-    # 5) Prueba “no hay locales activos”: usar un distrito inexistente o sin locales
+    # 5) Prueba "no hay locales activos": usar un distrito inexistente o sin locales
     url_no = "/api/services/servicio/2/distrito/999/locales"
     response_no = client.get(url_no)
     assert response_no.status_code == 404
@@ -45,7 +46,7 @@ def test_listar_fechas_presenciales(client: TestClient, session_test: Session):
     assert response.status_code == 200
 
     data = response.json()
-    # Debe tener el campo “fechas” con una lista ordenada de strings “YYYY-MM-DD”
+    # Debe tener el campo "fechas" con una lista ordenada de strings "YYYY-MM-DD"
     assert "fechas" in data
     fechas = data["fechas"]
     assert isinstance(fechas, list)
@@ -69,9 +70,9 @@ def test_listar_horas_presenciales(client: TestClient, session_test: Session):
     assert "horas" in data
     horas = data["horas"]
     assert isinstance(horas, list)
-    assert horas == ["09:00"]
+    assert horas == ["04:00"]
 
-    # 4) Fecha en formato inválido (“YYYY-MM-DD” en vez de “DD/MM/YYYY”)
+    # 4) Fecha en formato inválido ("YYYY-MM-DD" en vez de "DD/MM/YYYY")
     url_bad = "/api/reservations/horas-presenciales?id_servicio=6&id_distrito=60&id_local=600&fecha=2025-06-12"
     response_bad = client.get(url_bad)
     assert response_bad.status_code == 400
@@ -85,8 +86,8 @@ def test_listar_horas_presenciales(client: TestClient, session_test: Session):
 
 def test_sesiones_presenciales_detalladas(client: TestClient, session_test: Session):
 
-    # 3) Llamada correcta con fecha “2025-06-18” y hora “08:00”
-    url = "/api/reservations/sesiones-presenciales?id_servicio=10&id_distrito=39&id_local=5&fecha=10/06/2025&hora=09:00"
+    # 3) Llamada correcta con fecha "2025-06-18" y hora "08:00"
+    url = "/api/reservations/sesiones-presenciales?id_servicio=10&id_distrito=39&id_local=5&fecha=10/06/2025&hora=04:00"
     response = client.get(url)
     assert response.status_code == 200
 
@@ -94,13 +95,12 @@ def test_sesiones_presenciales_detalladas(client: TestClient, session_test: Sess
     assert "sesiones" in data
     sesiones = data["sesiones"]
     assert isinstance(sesiones, list)
-    # Debe devolver exactamente 1 sesion
     assert len(sesiones) == 1
 
     print(sesiones[0])
 
-    # 4) Mismo local pero hora distinta = []
-    url= "/api/reservations/sesiones-presenciales?id_servicio=10&id_distrito=39&id_local=5&fecha=12/06/2025&hora=17:00"
+    # 4) Mismo local pero hora distinta
+    url= "/api/reservations/sesiones-presenciales?id_servicio=10&id_distrito=39&id_local=5&fecha=12/06/2025&hora=12:00"
     response = client.get(url)
     assert response.status_code == 200
 
@@ -108,7 +108,6 @@ def test_sesiones_presenciales_detalladas(client: TestClient, session_test: Sess
     assert "sesiones" in data
     sesiones = data["sesiones"]
     assert isinstance(sesiones, list)
-    # Debe devolver exactamente 1 sesion
     assert len(sesiones) == 1
 
     print(sesiones[0])

@@ -20,12 +20,16 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def crear_usuario(db: Session, usuario: UsuarioCreate):
     hashed_password = pwd_context.hash(usuario.password)
+    
+    # Robustly get the value whether it's an enum or a string
+    tipo_value = usuario.tipo.value if isinstance(usuario.tipo, TipoUsuario) else usuario.tipo
+    
     db_usuario = Usuario(
         nombre=usuario.nombre,
         apellido=usuario.apellido,
         email=usuario.email,
         password=hashed_password,
-        tipo=usuario.tipo, # type: ignore
+        tipo=tipo_value,
         creado_por="sistema",
         estado=False
     )

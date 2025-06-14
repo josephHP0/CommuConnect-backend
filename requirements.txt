@@ -28,6 +28,7 @@ typing-inspection==0.4.0
 typing_extensions==4.13.2
 uvicorn==0.34.2
 pytest
+pytest-asyncio
 httpx
 sib-api-v3-sdk==7.6.0
 mysql-connector-python

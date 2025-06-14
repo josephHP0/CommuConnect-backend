@@ -8,6 +8,7 @@ from app.modules.auth.schemas import CambioPasswordIn, LoginRequest, TokenRespon
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.db import engine, get_session
 from app.modules.auth.services import pwd_context, hash_password
+from app.core.enums import TipoUsuario
 
 router = APIRouter()
 
@@ -19,7 +20,14 @@ def login(data: LoginRequest):
             raise HTTPException(status_code=401, detail="Credenciales inválidas")
         
         token = create_access_token(str(user.id_usuario))
-        return {"access_token": token,"user_rol": user.tipo.value} # type: ignore
+        
+        # Manejo robusto del tipo de usuario (Enum vs str)
+        user_rol = user.tipo.value if isinstance(user.tipo, TipoUsuario) else user.tipo
+        
+        # Construir la respuesta usando el modelo Pydantic explícitamente
+        response_data = TokenResponse(access_token=token, user_rol=user_rol)
+        
+        return response_data
     
 @router.get("/tiene-comunidades")
 def tiene_comunidades(
