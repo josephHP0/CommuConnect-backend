@@ -58,7 +58,7 @@ def test_get_presencial_reservation_details(client: TestClient, session_test: Se
     assert data["direccion"] == local.direccion_detallada
     assert data["url_meeting"] is None
     assert data["nombre_profesional"] is None
-    assert data["formulario_completado"] is False
+    assert data["estado_reserva"] == "confirmada"
 
 def test_get_virtual_reservation_details(client: TestClient, session_test: Session, test_user_token: str):
     # 1. Setup
@@ -110,7 +110,7 @@ def test_get_virtual_reservation_details(client: TestClient, session_test: Sessi
     assert data["url_meeting"] == sesion_virtual.url_meeting
     assert data["nombre_local"] is None
     assert data["direccion"] is None
-    assert data["formulario_completado"] is False
+    assert data["estado_reserva"] == "confirmada"
 
 def test_get_virtual_reservation_details_form_completed(client: TestClient, session_test: Session, test_user_token: str):
     # 1. Setup
@@ -151,7 +151,7 @@ def test_get_virtual_reservation_details_form_completed(client: TestClient, sess
     data = response.json()
     local_inicio = convert_utc_to_local(fecha_inicio)
     assert data["fecha"] == local_inicio.strftime("%d/%m/%Y")
-    assert data["formulario_completado"] is True
+    assert data["estado_reserva"] == "confirmada"
 
 def test_get_reservation_details_not_found(client: TestClient, test_user_token: str):
     headers = {"Authorization": f"Bearer {test_user_token}"}
