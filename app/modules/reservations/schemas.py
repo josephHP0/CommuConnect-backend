@@ -2,6 +2,8 @@ from typing import List, Optional
 from datetime import date, time, datetime
 from pydantic import BaseModel
 from datetime import datetime
+from pydantic import BaseModel, ConfigDict
+
 
 class FechasPresencialesResponse(BaseModel):
     fechas: List[date]
@@ -41,10 +43,17 @@ class ReservaCreate(BaseModel):
     id_sesion: int  # ID de la sesión virtual a reservar
 
 class ReservaOut(BaseModel):
-    """
-    Schema para la respuesta de una reserva.
-    Incluye datos básicos y, en caso de sesión virtual, la URL asociada.
-    """
+    id_reserva: int
+    id_sesion: int
+    id_cliente: int
+    estado_reserva: str
+    fecha_reserva: Optional[datetime] = None
+    url_archivo: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)  # Pydantic v2
+
+
+
 class ReservaPresencialSummary(SesionPresencialOut):
     nombres: str
     apellidos: str

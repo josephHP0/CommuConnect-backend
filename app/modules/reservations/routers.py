@@ -9,7 +9,7 @@ from app.modules.reservations.services import obtener_fechas_presenciales, obten
 from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ReservaDetailResponse, ListaReservasResponse, ListaReservasComunidadResponse, ReservaComunidadResponse
 from app.modules.auth.dependencies import get_current_user  
 from app.modules.reservations.schemas import ReservaCreate, ReservaOut
-from app.modules.reservations.services import reservar_sesion, obtener_url_archivo_virtual
+from app.modules.reservations.services import reservar_sesion_virtual, obtener_url_archivo_virtual
 from app.modules.reservations.models   import Sesion, Reserva, SesionVirtual
 from app.modules.auth.dependencies import get_current_cliente_id
 from sqlalchemy.exc import IntegrityError
@@ -184,7 +184,8 @@ def verificar_reserva(
 def create_reserva_virtual(
     reserva_in: ReservaCreate,
     session: Session = Depends(get_session),
-    cliente_id: int = Depends(get_current_cliente_id)
+    cliente_id: int = Depends(get_current_cliente_id),
+    usuario: Usuario = Depends(get_current_user)
 ) -> ReservaOut:
     """
     Crea una reserva para una sesión virtual.
@@ -192,7 +193,7 @@ def create_reserva_virtual(
     """
     try:
         # 1) Llamamos al service, que solo añade y hace flush
-        reserva = reservar_sesion(session, reserva_in.id_sesion, cliente_id)
+        reserva = reservar_sesion_virtual(session, reserva_in.id_sesion, cliente_id, usuario.id_usuario)
 
         # 2) Si no hubo excepción, confirmamos la transacción
         session.commit()
@@ -229,6 +230,9 @@ def create_reserva_virtual(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al crear la reserva."
         )
+    
+
+
 @router.get(
     "/summary/{id_sesion}",
     response_model=ReservaPresencialSummary,
@@ -248,6 +252,8 @@ def get_resumen_reserva_presencial(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error)
 
     return resumen
+
+
 
 @router.post(
     "/",
@@ -279,6 +285,8 @@ def create_new_reservation(
     response_model=ListaReservasComunidadResponse,
     summary="Listar reservas de un usuario en una comunidad para los siguientes 7 dias",
 )
+
+
 def list_reservations_by_user_community(
     *,
     id_comunidad: int = Query(..., description="ID de la comunidad a filtrar"),

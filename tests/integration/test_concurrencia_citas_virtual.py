@@ -19,7 +19,7 @@ if BASE_DIR not in sys.path:
 client = TestClient(app)
 
 # Credenciales de usuario A y usuario B
-LOGIN_DATA_A = {"email": "mr@cc.com", "password": "1234"}
+LOGIN_DATA_A = {"email": "ms@cc.com", "password": "1234"}
 LOGIN_DATA_B = {"email": "lr@cc.com", "password": "1234"}
 
 def _get_auth_headers(login_data):

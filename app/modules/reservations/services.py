@@ -21,6 +21,7 @@ from app.modules.billing.models import DetalleInscripcion
 from utils.email_brevo import send_reservation_email
 from fastapi import BackgroundTasks
 from app.modules.communities.models import Comunidad
+from datetime import datetime, timezone
 
 def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_comunidad: int, fecha: date):
     end_date = fecha + timedelta(days=7)
@@ -360,10 +361,11 @@ def obtener_url_archivo_virtual(session: Session, id_sesion: int) -> str | None:
     return sv.url_archivo if sv else None
 
 
-def reservar_sesion(
+def reservar_sesion_virtual(
     session: Session,
     id_sesion: int,
-    cliente_id: int
+    cliente_id: int,
+    usuario_id: int
 ) -> Reserva:
     """
     Servicio que bloquea la fila de Sesion, valida unicidad solo en Virtual,
@@ -385,10 +387,11 @@ def reservar_sesion(
             if sesion.tipo == "Virtual":
                 existe = session.exec(
                     select(Reserva)
-                      .where(
-                          Reserva.id_sesion      == id_sesion,
-                          Reserva.estado_reserva == "Activa"
-                      )
+                    .where(
+                        Reserva.id_sesion == id_sesion,
+                        Reserva.estado_reserva == "Activa"
+                    )
+                    .with_for_update()
                 ).first()
                 if existe:
                     raise HTTPException(
@@ -403,7 +406,10 @@ def reservar_sesion(
             reserva = Reserva(
                 id_sesion      = id_sesion,
                 id_cliente     = cliente_id,
-                estado_reserva = "Activa"
+                estado_reserva = "Activa",
+                fecha_reservada=sesion.inicio,
+                creado_por=usuario_id,
+                fecha_creacion = datetime.now(timezone.utc)
             )
             session.add(reserva)
             session.flush()
@@ -430,6 +436,7 @@ def reservar_sesion(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "Error interno al crear la reserva."
         )
+    
 def obtener_resumen_reserva_presencial(db: Session, id_sesion: int, id_usuario: int):
     # 1. Obtener datos del usuario
     usuario = db.get(Usuario, id_usuario)
