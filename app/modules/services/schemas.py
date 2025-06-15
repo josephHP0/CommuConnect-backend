@@ -54,14 +54,14 @@ class LocalOut(BaseModel):
 class ServicioRead(BaseModel):
     id_servicio: int
     nombre: str
-    descripcion: str
-    modalidad: str
+    descripcion: Optional[str]
+    modalidad: Optional[str]
     imagen_base64: Optional[str]
     fecha_creacion: Optional[datetime]
     creado_por: Optional[str]
     fecha_modificacion: Optional[datetime]
     modificado_por: Optional[str]
-    estado: bool
+    estado: Optional[bool]
 
     @validator('fecha_creacion', 'fecha_modificacion', pre=True, always=True)
     def localize_dates(cls, v):
@@ -81,3 +81,10 @@ class ServicioUpdate(BaseModel):
     nombre: Optional[str]
     descripcion: Optional[str]
     modalidad: Optional[ModalidadServicio]  # Ya definido antes
+
+class LocalOut(BaseModel):
+    id_local: int
+    nombre: str
+    direccion_detallada: Optional[str]
+    link: Optional[str]
+    responsable: Optional[str]

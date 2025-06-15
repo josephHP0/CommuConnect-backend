@@ -90,3 +90,23 @@ class InfoInscripcionOut(BaseModel):
             local_dt = convert_utc_to_local(v)
             return local_dt.isoformat() if local_dt else None
         return v # Mantiene el valor si ya es string o None
+    
+class PlanOut(BaseModel):
+    id_plan: int
+    titulo: str
+    descripcion: str
+    duracion: Optional[int]
+    topes: Optional[int]
+    precio: Optional[float]
+
+class ComunidadXPlanCreate(BaseModel):
+    id_comunidad: int
+    id_plan: int
+
+class PlanOut(BaseModel):
+    id_plan: int
+    titulo: str
+    descripcion: str
+    duracion: Optional[int]  # <- cambiar esto
+    topes: Optional[int]
+    precio: float
