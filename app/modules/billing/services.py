@@ -3,8 +3,8 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from app.modules.communities.models import ClienteXComunidad
-from .schemas import DetalleInscripcionCreate
+from app.modules.communities.models import ClienteXComunidad, Comunidad, ComunidadXPlan
+from .schemas import ComunidadXPlanCreate, DetalleInscripcionCreate
 from datetime import datetime
 
 from app.core.enums import MetodoPago
@@ -350,3 +350,59 @@ def reactivar_inscripcion(session: Session, id_inscripcion: int, modificado_por:
     session.commit()
     session.refresh(inscripcion)
     return inscripcion
+
+def obtener_planes_por_comunidad(db: Session, id_comunidad: int) -> list[Plan]:
+    query = (
+        select(Plan)
+        .join(ComunidadXPlan, Plan.id_plan == ComunidadXPlan.id_plan)
+        .where(ComunidadXPlan.id_comunidad == id_comunidad)
+        .where(ComunidadXPlan.estado == 1)
+        .where(Plan.estado == 1)
+    )
+    return db.exec(query).all()
+
+def agregar_plan_a_comunidad_serv(
+    db: Session,
+    data: ComunidadXPlanCreate,
+    creado_por: str
+) -> ComunidadXPlan:
+
+    # Validar si ya existe
+    existe = db.exec(
+        select(ComunidadXPlan).where(
+            ComunidadXPlan.id_comunidad == data.id_comunidad,
+            ComunidadXPlan.id_plan == data.id_plan
+        )
+    ).first()
+
+    if existe:
+        raise HTTPException(status_code=409, detail="El plan ya está asociado a esta comunidad.")
+
+    nueva_relacion = ComunidadXPlan(
+        id_comunidad=data.id_comunidad,
+        id_plan=data.id_plan,
+        fecha_creacion=datetime.utcnow(),
+        creado_por=creado_por,
+        estado=1
+    )
+
+    db.add(nueva_relacion)
+    db.commit()
+    db.refresh(nueva_relacion)
+    return nueva_relacion
+
+def obtener_planes_no_asociados(db: Session, id_comunidad: int) -> list[Plan]:
+    # Subconsulta: obtener ids de planes ya asociados a la comunidad
+    subquery = (
+        select(ComunidadXPlan.id_plan)
+        .where(ComunidadXPlan.id_comunidad == id_comunidad)
+    )
+
+    # Consulta principal: obtener planes cuyo id no está en la subconsulta
+    query = (
+        select(Plan)
+        .where(Plan.id_plan.not_in(subquery))
+        .where(Plan.estado == 1)  # solo planes activos, opcional
+    )
+
+    return db.exec(query).all()

@@ -1,11 +1,12 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id, get_current_user
 from app.modules.billing.models import Plan
 from app.modules.communities.models import ComunidadXPlan
-from .services import crear_inscripcion, crear_pago_pendiente, get_planes, pagar_pendiente
-from .schemas import DetalleInscripcionOut, PlanOut, InfoInscripcionOut
+from app.modules.users.models import Usuario
+from .services import agregar_plan_a_comunidad_serv, crear_inscripcion, crear_pago_pendiente, get_planes, obtener_planes_no_asociados, obtener_planes_por_comunidad, pagar_pendiente
+from .schemas import ComunidadXPlanCreate, DetalleInscripcionOut, PlanOut, InfoInscripcionOut
 from typing import List, Optional
 from app.modules.billing.services import tiene_membresia_asociada
 from app.modules.billing.schemas import MembresiaAsociadaOut
@@ -28,20 +29,9 @@ def listar_planes(session: Session = Depends(get_session)):
     planes = get_planes(session)
     return [PlanOut.from_orm(plan) for plan in planes]
 
-@router.get("/comunidades/{id_comunidad}/planes", response_model=List[PlanOut])
-def obtener_planes_por_comunidad(
-    id_comunidad: int,
-    session: Session = Depends(get_session)
-):
-    planes_ids = session.exec(
-        select(ComunidadXPlan.id_plan).where(ComunidadXPlan.id_comunidad == id_comunidad)
-    ).all()
-    if not planes_ids:
-        return []
-    planes = session.exec(
-        select(Plan).where(Plan.id_plan.in_(planes_ids)) # type: ignore
-    ).all()
-    return [PlanOut.from_orm(plan) for plan in planes]
+@router.get("/por-comunidad/{id_comunidad}", response_model=list[PlanOut])
+def listar_planes_por_comunidad(id_comunidad: int, db: Session = Depends(get_session)):
+    return obtener_planes_por_comunidad(db, id_comunidad)
 
 
 #Endpoint para registrar una inscripcion, necesita el id de la comunidad y opcionalmente el id del plan y del pago
@@ -237,3 +227,20 @@ def obtener_info_inscripcion(
         fecha_inicio=fecha_incio,
         topes_disponibles = "Ilimitado" if detalle and detalle.topes_disponibles and detalle.topes_disponibles > 200 else (detalle.topes_disponibles if detalle else None) # type: ignore
     )
+
+
+@router.post("/agregar-plan")
+def agregar_plan_a_comunidad(
+    data: ComunidadXPlanCreate,
+    db: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    return agregar_plan_a_comunidad_serv(
+        db=db,
+        data=data,
+        creado_por=current_user.email  # O current_user.nombre_usuario según tu modelo
+    )
+
+@router.get("/no-asociados/{id_comunidad}", response_model=list[PlanOut])
+def listar_planes_no_asociados(id_comunidad: int, db: Session = Depends(get_session)):
+    return obtener_planes_no_asociados(db, id_comunidad)
