@@ -261,10 +261,11 @@ def crear_detalle_inscripcion(
         raise HTTPException(status_code=404, detail="Plan no encontrado")
 
     fecha_inicio = datetime.utcnow()
+    fecha_fin = fecha_inicio + timedelta(days=30)
     # Si el id_plan es impar, fecha_fin en 1 año; si es par, en 1 mes
-    if inscripcion.id_plan and inscripcion.id_plan % 2 == 1:
+    if plan.duracion == 12:
         fecha_fin = fecha_inicio + timedelta(days=365)
-    else:
+    elif plan.duracion == 1:
         fecha_fin = fecha_inicio + timedelta(days=30)
 
     detalle = DetalleInscripcion(
@@ -354,12 +355,12 @@ def reactivar_inscripcion(session: Session, id_inscripcion: int, modificado_por:
 def obtener_planes_por_comunidad(db: Session, id_comunidad: int) -> list[Plan]:
     query = (
         select(Plan)
-        .join(ComunidadXPlan, Plan.id_plan == ComunidadXPlan.id_plan)
+        .join(ComunidadXPlan, Plan.id_plan == ComunidadXPlan.id_plan) # type: ignore
         .where(ComunidadXPlan.id_comunidad == id_comunidad)
         .where(ComunidadXPlan.estado == 1)
         .where(Plan.estado == 1)
     )
-    return db.exec(query).all()
+    return db.exec(query).all() # type: ignore
 
 def agregar_plan_a_comunidad_serv(
     db: Session,
@@ -401,8 +402,8 @@ def obtener_planes_no_asociados(db: Session, id_comunidad: int) -> list[Plan]:
     # Consulta principal: obtener planes cuyo id no está en la subconsulta
     query = (
         select(Plan)
-        .where(Plan.id_plan.not_in(subquery))
+        .where(Plan.id_plan.not_in(subquery)) # type: ignore
         .where(Plan.estado == 1)  # solo planes activos, opcional
     )
 
-    return db.exec(query).all()
+    return db.exec(query).all() # type: ignore
