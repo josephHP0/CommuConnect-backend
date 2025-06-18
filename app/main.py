@@ -17,7 +17,8 @@ logging.basicConfig(level=logging.DEBUG)
 app = FastAPI(debug=True)
 
 origins = [
-    "http://commuconnect-frontend-v1.s3-website-us-east-1.amazonaws.com"
+    #"http://commuconnect-frontend-v1.s3-website-us-east-1.amazonaws.com"
+    "http://localhost:4200"
 ]
 
 app.add_middleware(
