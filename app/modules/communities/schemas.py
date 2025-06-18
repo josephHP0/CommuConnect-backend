@@ -16,13 +16,13 @@ class ComunidadCreate(BaseModel):
 class ComunidadRead(BaseModel):
     id_comunidad: int
     nombre: str
-    slogan: Optional[str]
+    slogan: Optional[str] = None
     imagen: Optional[str] = None
-    fecha_creacion: datetime
-    creado_por: str
-    fecha_modificacion: Optional[datetime]
-    modificado_por: Optional[str]
-    estado: bool
+    fecha_creacion: Optional[datetime] = None
+    creado_por: Optional[str] = None
+    fecha_modificacion: Optional[datetime] = None
+    modificado_por: Optional[str] = None
+    estado: bool 
 
     @validator('fecha_creacion', 'fecha_modificacion', pre=True, always=True)
     def localize_dates(cls, v):
