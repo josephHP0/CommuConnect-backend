@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
 from fastapi import HTTPException, UploadFile
 from sqlmodel import Session, select
-from app.modules.services.models import ProfesionalCreate, Servicio, Profesional
+from app.modules.services.models import  Servicio, Profesional
 from app.modules.reservations.models import SesionVirtual,Sesion
 from typing import List, Optional
 from app.modules.geography.models import Distrito  # Modelo de geografía
 from app.modules.services.models import Local      # Modelo Local dentro de services
 from app.modules.services.schemas import DistritoOut, ServicioCreate, ServicioRead, ServicioUpdate  # Esquema de salida (DTO)
 import base64
+from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut
 
 def obtener_servicios_por_ids(session: Session, servicio_ids: List[int]):
     if not servicio_ids:

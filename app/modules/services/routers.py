@@ -8,7 +8,8 @@ from typing import List, Optional
 from app.modules.services.schemas import ProfesionalRead, ServicioCreate, ServicioRead, ServicioUpdate
 from app.modules.services.services import obtener_distritos_por_servicio_service
 from app.modules.services.schemas import DistritoOut
-from app.modules.services.models import Local, ProfesionalCreate, ProfesionalOut
+from app.modules.services.models import Local
+from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut
 from app.modules.services.schemas import LocalOut
 from app.modules.users.models import Usuario
 router = APIRouter()
@@ -156,3 +157,4 @@ def obtener_locales_por_servicio(id_servicio: int, db: Session = Depends(get_ses
     if not locales:
         raise HTTPException(status_code=404, detail="No se encontraron locales para este servicio")
     return locales
+
