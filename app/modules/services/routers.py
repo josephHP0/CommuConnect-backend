@@ -287,8 +287,8 @@ def listar_servicios_disponibles_para_comunidad(
             detail=f"Error interno al obtener servicios disponibles: {str(e)}"
         )
 
-@router.post("/admin/comunidad/{id_comunidad}/servicio/{id_servicio}/añadir")
-def añadir_servicio_a_comunidad(
+@router.post("/admin/comunidad/{id_comunidad}/servicio/{id_servicio}/anhadir")
+def anhadir_servicio_a_comunidad(
     id_comunidad: int,
     id_servicio: int,
     session: Session = Depends(get_session),
@@ -358,7 +358,7 @@ def añadir_servicio_a_comunidad(
             session.commit()
             
             return {
-                "mensaje": "Servicio añadido exitosamente a la comunidad",
+                "mensaje": "Servicio anhadido exitosamente a la comunidad",
                 "id_comunidad": id_comunidad,
                 "id_servicio": id_servicio,
                 "nombre_servicio": servicio.nombre,

@@ -165,7 +165,7 @@ async def test_listar_servicios_por_comunidad_admin(admin_token: str, async_clie
 
 @pytest.mark.asyncio
 async def test_listar_servicios_disponibles_para_comunidad(admin_token: str, async_client: AsyncClient, test_data):
-    """Test para listar servicios disponibles para añadir a una comunidad"""
+    """Test para listar servicios disponibles para anhadir a una comunidad"""
     comunidad_id = test_data["comunidad_id"]
     
     response = await async_client.get(
@@ -185,19 +185,19 @@ async def test_listar_servicios_disponibles_para_comunidad(admin_token: str, asy
     assert test_data["servicio1_id"] not in ids_disponibles  # Activo, NO debería aparecer
 
 @pytest.mark.asyncio
-async def test_añadir_servicio_nuevo_a_comunidad(admin_token: str, async_client: AsyncClient, test_data):
-    """Test para añadir un servicio completamente nuevo a una comunidad"""
+async def test_anhadir_servicio_nuevo_a_comunidad(admin_token: str, async_client: AsyncClient, test_data):
+    """Test para anhadir un servicio completamente nuevo a una comunidad"""
     comunidad_id = test_data["comunidad_id"]
     servicio_id = test_data["servicio3_id"]  # Servicio no asociado
     
     response = await async_client.post(
-        f"/api/services/admin/comunidad/{comunidad_id}/servicio/{servicio_id}/añadir",
+        f"/api/services/admin/comunidad/{comunidad_id}/servicio/{servicio_id}/anhadir",
         headers={"Authorization": f"Bearer {admin_token}"}
     )
     
     assert response.status_code == 200
     data = response.json()
-    assert data["mensaje"] == "Servicio añadido exitosamente a la comunidad"
+    assert data["mensaje"] == "Servicio anhadido exitosamente a la comunidad"
     assert data["accion"] == "creado"
     assert data["id_comunidad"] == comunidad_id
     assert data["id_servicio"] == servicio_id
@@ -210,7 +210,7 @@ async def test_reactivar_servicio_en_comunidad(admin_token: str, async_client: A
     servicio_id = test_data["servicio2_id"]  # Servicio inactivo
     
     response = await async_client.post(
-        f"/api/services/admin/comunidad/{comunidad_id}/servicio/{servicio_id}/añadir",
+        f"/api/services/admin/comunidad/{comunidad_id}/servicio/{servicio_id}/anhadir",
         headers={"Authorization": f"Bearer {admin_token}"}
     )
     
@@ -223,13 +223,13 @@ async def test_reactivar_servicio_en_comunidad(admin_token: str, async_client: A
     assert data["estado"] == 1
 
 @pytest.mark.asyncio
-async def test_añadir_servicio_ya_activo(admin_token: str, async_client: AsyncClient, test_data):
-    """Test para intentar añadir un servicio que ya está activo"""
+async def test_anhadir_servicio_ya_activo(admin_token: str, async_client: AsyncClient, test_data):
+    """Test para intentar anhadir un servicio que ya está activo"""
     comunidad_id = test_data["comunidad_id"]
     servicio_id = test_data["servicio1_id"]  # Servicio ya activo
     
     response = await async_client.post(
-        f"/api/services/admin/comunidad/{comunidad_id}/servicio/{servicio_id}/añadir",
+        f"/api/services/admin/comunidad/{comunidad_id}/servicio/{servicio_id}/anhadir",
         headers={"Authorization": f"Bearer {admin_token}"}
     )
     
