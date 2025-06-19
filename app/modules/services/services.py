@@ -172,6 +172,7 @@ def listar_profesionales(db: Session) -> list[Profesional]:
 def crear_profesional(db: Session, data: ProfesionalCreate, creado_por: str) -> Profesional:
     nuevo_profesional = Profesional(
         nombre_completo=data.nombre_completo,
+        email=data.email,
         id_servicio=data.id_servicio,
         formulario=data.formulario,
         fecha_creacion=datetime.utcnow(),
@@ -182,6 +183,7 @@ def crear_profesional(db: Session, data: ProfesionalCreate, creado_por: str) -> 
     db.commit()
     db.refresh(nuevo_profesional)
     return nuevo_profesional
+
 
 def listar_locales_por_servicio(db: Session, id_servicio: int) -> list[Local]:
     query = select(Local).where(
