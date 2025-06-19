@@ -11,13 +11,14 @@ class Plan(SQLModel, table=True):
     id_plan: Optional[int] = Field(default=None, primary_key=True)
     titulo: str = Field(max_length=100)
     descripcion: str = Field(max_length=300)
+    duracion: int
     topes: int
     precio: float = Field(sa_column=Column(DECIMAL(10, 2)))
-    fecha_creacion: datetime
+    fecha_creacion: datetime = Field(default_factory=datetime.utcnow)
     creado_por: str = Field(max_length=50)
     fecha_modificacion: Optional[datetime] = None
     modificado_por: Optional[str] = Field(default=None, max_length=50)
-    estado: int
+    estado: int = 1
 
 class Pago(SQLModel, table=True):
     id_pago: Optional[int] = Field(default=None, primary_key=True)
@@ -57,4 +58,3 @@ class DetalleInscripcion(SQLModel, table=True):
     fecha_modificacion: Optional[datetime] = None
     modificado_por: Optional[str] = Field(default=None, max_length=50)
     estado: int
-

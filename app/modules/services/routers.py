@@ -4,12 +4,13 @@ from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_user
 from app.modules.users.dependencies import get_current_admin
-from app.modules.services.services import actualizar_servicio, crear_servicio, eliminar_servicio, listar_servicios, obtener_profesionales_por_servicio, obtener_servicio_por_id
+from app.modules.services.services import actualizar_servicio, crear_profesional, crear_servicio, eliminar_servicio, listar_locales_por_servicio, listar_profesionales, listar_servicios, obtener_profesionales_por_servicio, obtener_servicio_por_id
 from typing import List, Optional
 from app.modules.services.schemas import ProfesionalRead, ServicioCreate, ServicioRead, ServicioUpdate, ServicioOut
 from app.modules.services.services import obtener_distritos_por_servicio_service
 from app.modules.services.schemas import DistritoOut
 from app.modules.services.models import Local
+from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut
 from app.modules.services.schemas import LocalOut
 from app.modules.users.models import Usuario
 from app.modules.communities.services import obtener_servicios_con_imagen_base64
@@ -136,6 +137,30 @@ def obtener_servicio_por_identificador(
     session: Session = Depends(get_session)
 ):
     return obtener_servicio_por_id(session, id_servicio)
+
+@router.get("/", response_model=list[ProfesionalOut])
+def obtener_profesionales(db: Session = Depends(get_session)):
+    return listar_profesionales(db)
+
+@router.post("/", response_model=ProfesionalOut)
+def registrar_profesional_con_servicio(
+    data: ProfesionalCreate,
+    db: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    try:
+        return crear_profesional(db, data, creado_por=current_user.email)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    
+@router.get("/por-servicio/{id_servicio}", response_model=list[LocalOut])
+def obtener_locales_por_servicio(id_servicio: int, db: Session = Depends(get_session)):
+    locales = listar_locales_por_servicio(db, id_servicio)
+    if not locales:
+        raise HTTPException(status_code=404, detail="No se encontraron locales para este servicio")
+    return locales
+
+
 
 @router.get("/admin/comunidad/{id_comunidad}/servicios", response_model=List[ServicioOut])
 def listar_servicios_por_comunidad_admin(

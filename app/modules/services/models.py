@@ -60,3 +60,4 @@ class Profesional(SQLModel, table=True):
 
     # Relación inversa con Servicio
     servicio: Optional["Servicio"] = Relationship(back_populates="profesionales")
+

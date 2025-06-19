@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends
+from zoneinfo import ZoneInfo
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id, get_current_user
-from app.modules.billing.models import Plan
+from app.modules.billing.models import DetalleInscripcion, Inscripcion, Pago, Plan
 from app.modules.communities.models import ComunidadXPlan
-from .services import crear_inscripcion, crear_pago_pendiente, get_planes, pagar_pendiente
-from .schemas import DetalleInscripcionOut, PlanOut, InfoInscripcionOut
+from app.modules.users.models import Usuario
+from .services import agregar_plan_a_comunidad_serv, crear_inscripcion, crear_pago_pendiente, get_planes, obtener_planes_no_asociados, obtener_planes_por_comunidad, pagar_pendiente
+from .schemas import ComunidadXPlanCreate, DetalleInscripcionOut, DetalleInscripcionPagoOut, InscripcionResumenOut, PlanOut, InfoInscripcionOut
 from typing import List, Optional
 from app.modules.billing.services import tiene_membresia_asociada
 from app.modules.billing.schemas import MembresiaAsociadaOut
@@ -28,20 +30,9 @@ def listar_planes(session: Session = Depends(get_session)):
     planes = get_planes(session)
     return [PlanOut.from_orm(plan) for plan in planes]
 
-@router.get("/comunidades/{id_comunidad}/planes", response_model=List[PlanOut])
-def obtener_planes_por_comunidad(
-    id_comunidad: int,
-    session: Session = Depends(get_session)
-):
-    planes_ids = session.exec(
-        select(ComunidadXPlan.id_plan).where(ComunidadXPlan.id_comunidad == id_comunidad)
-    ).all()
-    if not planes_ids:
-        return []
-    planes = session.exec(
-        select(Plan).where(Plan.id_plan.in_(planes_ids)) # type: ignore
-    ).all()
-    return [PlanOut.from_orm(plan) for plan in planes]
+@router.get("/por-comunidad/{id_comunidad}", response_model=list[PlanOut])
+def listar_planes_por_comunidad(id_comunidad: int, db: Session = Depends(get_session)):
+    return obtener_planes_por_comunidad(db, id_comunidad)
 
 
 #Endpoint para registrar una inscripcion, necesita el id de la comunidad y opcionalmente el id del plan y del pago
@@ -221,7 +212,7 @@ def obtener_info_inscripcion(
         )
     ).first()
 
-    periodo = "Anual" if inscripcion.id_plan and inscripcion.id_plan % 2 == 1 else "Mensual"
+    periodo = "Anual" if plan.duracion == 12 else "Mensual"
     fecha_fin = detalle.fecha_fin.isoformat() if detalle and detalle.fecha_fin else None
     fecha_incio = detalle.fecha_inicio.isoformat() if detalle and detalle.fecha_inicio else None
     topes_disponibles = detalle.topes_disponibles if detalle else None
@@ -235,5 +226,88 @@ def obtener_info_inscripcion(
         periodo=periodo,
         fecha_fin=fecha_fin,
         fecha_inicio=fecha_incio,
-        topes_disponibles = "Ilimitado" if detalle and detalle.topes_disponibles and detalle.topes_disponibles > 200 else (detalle.topes_disponibles if detalle else None) # type: ignore
+        topes_disponibles = (
+            "ilimitado"
+            if (plan.topes is None or (detalle and detalle.topes_disponibles is None))
+            else (detalle.topes_disponibles if detalle else None)
+        )
+    )
+
+
+@router.post("/agregar-plan")
+def agregar_plan_a_comunidad(
+    data: ComunidadXPlanCreate,
+    db: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    return agregar_plan_a_comunidad_serv(
+        db=db,
+        data=data,
+        creado_por=current_user.email  # O current_user.nombre_usuario según tu modelo
+    )
+
+@router.get("/no-asociados/{id_comunidad}", response_model=list[PlanOut])
+def listar_planes_no_asociados(id_comunidad: int, db: Session = Depends(get_session)):
+    return obtener_planes_no_asociados(db, id_comunidad)
+
+@router.get("/usuario/inscripciones", response_model=List[InscripcionResumenOut])
+def historial_membresias(
+    session: Session = Depends(get_session),
+    id_cliente: int = Depends(get_current_cliente_id),
+):
+    from sqlmodel import select
+    from .services import Inscripcion, DetalleInscripcion
+    from app.modules.billing.models import Plan
+
+    inscripciones = session.exec(
+        select(Inscripcion).where(Inscripcion.id_cliente == id_cliente)
+    ).all()
+
+    resultado = []
+    for inscripcion in inscripciones:
+        plan = session.get(Plan, inscripcion.id_plan)
+        detalle = session.exec(
+            select(DetalleInscripcion).where(
+                DetalleInscripcion.id_inscripcion == inscripcion.id_inscripcion
+            )
+        ).first()
+        fecha_inicio = None
+        if detalle and detalle.fecha_inicio:
+            fecha_inicio = detalle.fecha_inicio.astimezone(ZoneInfo("America/Lima")).isoformat()
+        resultado.append(
+            InscripcionResumenOut(
+                id_inscripcion=inscripcion.id_inscripcion, # type: ignore
+                fecha_inicio=fecha_inicio,
+                titulo_plan=plan.titulo if plan else "",
+                precio=float(plan.precio) if plan else 0.0,
+            )
+        )
+    return resultado
+
+
+@router.get("/inscripcion/{id_inscripcion}/detalle", response_model=DetalleInscripcionPagoOut)
+def ver_detalle_pago(
+    id_inscripcion: int,
+    session: Session = Depends(get_session)
+):
+    inscripcion = session.get(Inscripcion, id_inscripcion)
+    if not inscripcion:
+        raise HTTPException(status_code=404, detail="Inscripción no encontrada")
+
+    plan = session.get(Plan, inscripcion.id_plan)
+    pago = session.get(Pago, inscripcion.id_pago) if inscripcion.id_pago else None
+
+    fecha_pago = None
+    hora_pago = None
+    if pago and pago.fecha_pago:
+        fecha_pago_peru = pago.fecha_pago.astimezone(ZoneInfo("America/Lima"))
+        fecha_pago = fecha_pago_peru.date().isoformat()
+        hora_pago = fecha_pago_peru.time().isoformat(timespec="seconds")
+
+    return DetalleInscripcionPagoOut(
+        nombre_membresia=plan.titulo if plan else "",
+        fecha_pago=fecha_pago,
+        hora_pago=hora_pago,
+        id_pago=pago.id_pago if pago else None,
+        tarjeta="**** 1234"
     )

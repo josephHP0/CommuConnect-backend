@@ -9,6 +9,7 @@ class PlanOut(BaseModel):
     descripcion: str
     topes: Union[int, str]
     precio: float
+    duracion: Optional[int]
 
     @property
     def topes_display(self):
@@ -90,3 +91,21 @@ class InfoInscripcionOut(BaseModel):
             local_dt = convert_utc_to_local(v)
             return local_dt.isoformat() if local_dt else None
         return v # Mantiene el valor si ya es string o None
+    
+
+class ComunidadXPlanCreate(BaseModel):
+    id_comunidad: int
+    id_plan: int
+
+class InscripcionResumenOut(BaseModel):
+    id_inscripcion: int
+    fecha_inicio: Optional[str]
+    titulo_plan: str
+    precio: float
+
+class DetalleInscripcionPagoOut(BaseModel):
+    nombre_membresia: str
+    fecha_pago: Optional[str]
+    hora_pago: Optional[str]
+    id_pago: Optional[int]
+    tarjeta: str
