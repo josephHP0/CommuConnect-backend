@@ -1,24 +1,33 @@
 from datetime import datetime, date
 from typing import List
-from fastapi import HTTPException
+from fastapi import HTTPException, File, UploadFile
 from fastapi import APIRouter, Depends, Query, HTTPException, status, Path as FastPath
 from sqlmodel import Session, select
+from sqlalchemy.orm import joinedload
 from app.core.db import get_session
 from app.modules.services.models import Local
-from app.modules.reservations.services import obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,obtener_fechas_inicio_por_profesional,existe_reserva_para_usuario, obtener_resumen_reserva_presencial, crear_reserva_presencial, listar_reservas_usuario_comunidad_semana, get_reservation_details, cancelar_reserva_por_id
-from app.modules.reservations.schemas import FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, ReservaPresencialSummary, ReservaRequest, ListaReservasResponse, ListaReservasComunidadResponse, ReservaComunidadResponse, ReservaDetailScreenResponse, ReservaResponse
-from app.modules.auth.dependencies import get_current_user  
-from app.modules.reservations.schemas import ReservaCreate
-from app.modules.reservations.models   import Sesion, Reserva, SesionVirtual
-from app.modules.auth.dependencies import get_current_cliente_id
+from app.modules.reservations.services import (
+    obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,
+    obtener_fechas_inicio_por_profesional, existe_reserva_para_usuario, obtener_resumen_reserva_presencial, 
+    crear_reserva_presencial, listar_reservas_usuario_comunidad_semana, get_reservation_details, 
+    cancelar_reserva_por_id, reservar_sesion_virtual, obtener_url_archivo_virtual, 
+    obtener_info_formulario, completar_formulario_virtual
+)
+from app.modules.reservations.schemas import (
+    FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, 
+    ReservaPresencialSummary, ReservaRequest, ListaReservasComunidadResponse, 
+    ReservaComunidadResponse, ReservaDetailScreenResponse, ReservaResponse, FormularioInfoResponse,
+    ReservaCreate, ReservaPresencialCreadaResponse
+)
+from app.modules.auth.dependencies import get_current_user, get_current_cliente_id
+from app.modules.reservations.models import Sesion, Reserva, SesionVirtual
 from sqlalchemy.exc import IntegrityError
 from app.modules.users.models import Usuario
 from fastapi import BackgroundTasks
-from app.modules.billing.services import obtener_inscripcion_activa, es_plan_con_topes, obtener_detalle_topes
-from app.modules.users.models import Cliente
+from app.modules.billing.services import obtener_inscripcion_activa, es_plan_con_topes
 from utils.datetime_utils import convert_utc_to_local
-from app.modules.users.dependencies import get_current_user
-from app.modules.reservations.services import reservar_sesion_virtual, obtener_url_archivo_virtual
+from app.modules.users.services import obtener_cliente_desde_usuario
+from app.modules.services.models import Profesional
 
 router = APIRouter()
 
@@ -258,7 +267,7 @@ def get_resumen_reserva_presencial(
 
 @router.post(
     "/",
-    response_model=ReservaResponse,
+    response_model=ReservaPresencialCreadaResponse,
     summary="Crea una nueva reserva para una sesión presencial",
     status_code=status.HTTP_201_CREATED,
 )
@@ -363,3 +372,59 @@ def cancel_reservation(
     id_usuario = current_user.id_usuario
     result = cancelar_reserva_por_id(db=db, id_reserva=id_reserva, id_usuario=id_usuario)
     return result
+
+@router.get("/formulario/{id_sesion}", response_model=FormularioInfoResponse)
+def get_info_formulario(
+    id_sesion: int,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Endpoint para obtener la información de la página del formulario.
+    """
+    cliente = obtener_cliente_desde_usuario(session, current_user)
+    return obtener_info_formulario(session, id_sesion, cliente.id_cliente)
+
+@router.post("/formulario/{id_sesion}/enviar")
+async def enviar_formulario(
+    id_sesion: int,
+    bg_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Endpoint para subir el formulario completado por el cliente.
+    """
+    # 1. Obtener IDs y datos necesarios
+    cliente = obtener_cliente_desde_usuario(session, current_user)
+    cliente_id = cliente.id_cliente
+    cliente_nombre = f"{current_user.nombre} {current_user.apellido}"
+
+    # 2. Obtener info del profesional
+    sesion_virtual = session.exec(
+        select(SesionVirtual).where(SesionVirtual.id_sesion == id_sesion)
+    ).one_or_none()
+
+    if not sesion_virtual:
+         raise HTTPException(status_code=404, detail="Sesión virtual no encontrada.")
+
+    profesional = session.get(Profesional, sesion_virtual.id_profesional)
+    
+    if not profesional:
+        raise HTTPException(status_code=404, detail="Profesional de la sesión no encontrado.")
+    
+    if not profesional.email:
+        raise HTTPException(status_code=404, detail="El profesional no tiene un email configurado.")
+
+    # 3. Llamar al servicio con todos los datos
+    return await completar_formulario_virtual(
+        session=session,
+        id_sesion=id_sesion,
+        cliente_id=cliente_id,
+        file=file,
+        bg_tasks=bg_tasks,
+        profesional_email=profesional.email,
+        profesional_nombre=profesional.nombre_completo,
+        cliente_nombre=cliente_nombre
+    )

@@ -7,6 +7,7 @@ class ComunidadXServicio(SQLModel, table=True):
     __tablename__: ClassVar[str] = "comunidadxservicio" # type: ignore[assignment]
     id_comunidad: int = Field(foreign_key="comunidad.id_comunidad", primary_key=True)
     id_servicio: int = Field(foreign_key="servicio.id_servicio", primary_key=True)
+    estado: int = Field(default=1)  # 1=Activo, 0=Inactivo
 
 class Servicio(SQLModel, table=True):
     id_servicio: Optional[int] = Field(default=None, primary_key=True)
@@ -23,6 +24,7 @@ class Servicio(SQLModel, table=True):
     profesionales: List["Profesional"] = Relationship(back_populates="servicio")
 
 class Local(SQLModel, table=True):
+    __tablename__ = "local"
     id_local: Optional[int] = Field(default=None, primary_key=True)
     id_departamento: int = Field(foreign_key="departamento.id_departamento")
     id_distrito: int = Field(foreign_key="distrito.id_distrito")
@@ -46,6 +48,7 @@ class Profesional(SQLModel, table=True):
 
     id_profesional: Optional[int] = Field(default=None, primary_key=True)
     nombre_completo: Optional[str] = Field(default=None, max_length=200)
+    email: Optional[str] = Field(default=None, max_length=100)
     id_servicio: Optional[int] = Field(default=None, foreign_key="servicio.id_servicio")
     formulario: Optional[str] = Field(default=None, max_length=200)
 
@@ -57,4 +60,3 @@ class Profesional(SQLModel, table=True):
 
     # Relación inversa con Servicio
     servicio: Optional["Servicio"] = Relationship(back_populates="profesionales")
-

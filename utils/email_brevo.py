@@ -79,3 +79,33 @@ def send_reservation_email(to_email: str, details: dict) -> None:
         html_content=html,
     )
     _api.send_transac_email(email)
+
+def send_form_email(to_email: str, file_content: bytes, filename: str, details: dict) -> None:
+    """
+    Envía un correo al profesional con el formulario adjunto.
+    """
+    html = f"""
+        <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
+            <h2 style="color: #4f46e5;">Nuevo Formulario Recibido</h2>
+            <p>Hola {details.get('nombre_profesional', '')},</p>
+            <p>El cliente <strong>{details.get('nombre_cliente', 'N/A')}</strong> ha completado y enviado el formulario para la sesión del <strong>{details.get('fecha_sesion', 'N/A')}</strong> a las <strong>{details.get('hora_inicio', 'N/A')}</strong>.</p>
+            <p>Puedes encontrar el documento adjunto a este correo.</p>
+            <br>
+            <p>Saludos,</p>
+            <p>El equipo de CommuConnect</p>
+        </div>
+    """
+    
+    import base64
+    attachment_content = base64.b64encode(file_content).decode()
+
+    email = brevo.SendSmtpEmail(
+        sender={"email": EMAIL_FROM, "name": "CommuConnect"},
+        to=[{"email": to_email}],
+        subject=f"Nuevo Formulario Recibido de {details.get('nombre_cliente', 'N/A')}",
+        html_content=html,
+        attachment=[
+            {"content": attachment_content, "name": filename}
+        ]
+    )
+    _api.send_transac_email(email)

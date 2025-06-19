@@ -1,6 +1,7 @@
 from sqlmodel import SQLModel, Field, Relationship
 from typing import Optional, List, TYPE_CHECKING
 from datetime import datetime
+
 class Sesion(SQLModel, table=True):
     __tablename__ = "sesion"
     id_sesion: Optional[int] = Field(default=None, primary_key=True)
@@ -24,20 +25,16 @@ class Sesion(SQLModel, table=True):
 class SesionVirtual(SQLModel, table=True):
     __tablename__ = "sesion_virtual"
     id_sesion_virtual: Optional[int] = Field(default=None, primary_key=True)
-    id_sesion: Optional[int] = Field(foreign_key="sesion.id_sesion")
-    id_profesional: Optional[int] = Field(foreign_key="profesional.id_profesional")
-
-    doc_asociado: Optional[bytes] = None
-    url_meeting: Optional[str] = Field(default=None, max_length=500)
-    url_archivo: Optional[str] = Field(default=None, max_length=500)
-
+    id_sesion: int = Field(foreign_key="sesion.id_sesion")
+    id_profesional: int = Field(foreign_key="profesional.id_profesional")
+    doc_asociado: Optional[str] = Field(default=None, max_length=200)
+    url_meeting: Optional[str] = Field(default=None, max_length=200)
+    url_archivo: Optional[str] = Field(default=None, max_length=200)
     fecha_creacion: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    creado_por: Optional[str] = Field(default=None, max_length=50)
-    fecha_modificacion: Optional[datetime] = None
-    modificado_por: Optional[str] = Field(default=None, max_length=50)
-
-    estado: Optional[bool] = Field(default=True)
-
+    creado_por: Optional[int] = Field(default=None)
+    fecha_modificacion: Optional[datetime] = Field(default=None)
+    modificado_por: Optional[int] = Field(default=None)
+    estado: int = Field(default=1)
     # Relaciones (si tienes modelos para Sesion y Profesional)
     sesion: Optional["Sesion"] = Relationship(back_populates="sesiones_virtuales")
 

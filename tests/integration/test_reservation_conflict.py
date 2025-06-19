@@ -3,7 +3,7 @@ from httpx import AsyncClient
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select, delete
 from app.modules.reservations.models import Reserva, Sesion, SesionVirtual, SesionPresencial
-from app.modules.services.models import Servicio, ComunidadXServicio
+from app.modules.services.models import Servicio, ComunidadXServicio, Profesional
 from app.modules.communities.models import Comunidad
 from app.modules.users.models import Cliente, Usuario
 from app.modules.reservations.services import crear_sesion_con_tipo
@@ -18,10 +18,13 @@ def _create_base_scenario(session: Session):
     servicio_yoga = Servicio(nombre="Servicio Yoga")
     servicio_meditacion = Servicio(nombre="Servicio Meditación")
     
+    profesional_test = Profesional(nombre_completo="Test Prof", email="prof@test.com", id_servicio=1)
+
     session.add(comunidad_a)
     session.add(comunidad_b)
     session.add(servicio_yoga)
     session.add(servicio_meditacion)
+    session.add(profesional_test)
     session.commit()
 
     # Associate services with communities
@@ -34,6 +37,7 @@ def _create_base_scenario(session: Session):
         "comunidad2_id": comunidad_b.id_comunidad,
         "servicio1_id": servicio_yoga.id_servicio,
         "servicio2_id": servicio_meditacion.id_servicio,
+        "profesional_id": profesional_test.id_profesional
     }
 
 def _create_reservation_for_test(session: Session, cliente_id: int, sesion_id: int, id_comunidad: int) -> Reserva:
@@ -56,7 +60,8 @@ def cleanup_test_data(session: Session,
                         reservation_ids: list = None, 
                         session_ids: list = None, 
                         community_ids: list = None, 
-                        service_ids: list = None):
+                        service_ids: list = None,
+                        profesional_ids: list = None):
     """Cleans up all data created for a test."""
     
     # Fetch objects by ID to ensure they are "fresh" in the session before deletion
@@ -64,6 +69,7 @@ def cleanup_test_data(session: Session,
     sessions_to_delete = session.exec(select(Sesion).where(Sesion.id_sesion.in_(session_ids))).all() if session_ids else []
     communities_to_delete = session.exec(select(Comunidad).where(Comunidad.id_comunidad.in_(community_ids))).all() if community_ids else []
     services_to_delete = session.exec(select(Servicio).where(Servicio.id_servicio.in_(service_ids))).all() if service_ids else []
+    profesionales_to_delete = session.exec(select(Profesional).where(Profesional.id_profesional.in_(profesional_ids))).all() if profesional_ids else []
 
     # 1. Delete Reservations (children of Session, Cliente, Comunidad)
     for res in reservations_to_delete:
@@ -110,6 +116,10 @@ def cleanup_test_data(session: Session,
     for serv in services_to_delete:
         session.delete(serv)
 
+    # 8. Delete Profesionales
+    for prof in profesionales_to_delete:
+        session.delete(prof)
+
 def test_reservation_conflict_in_same_community(client: TestClient, session_test: Session, test_user_token: str):
     headers = {"Authorization": f"Bearer {test_user_token}"}
     cliente = session_test.exec(select(Cliente).where(Cliente.num_doc == "12345678")).first()
@@ -126,6 +136,7 @@ def test_reservation_conflict_in_same_community(client: TestClient, session_test
         descripcion="Test Session",
         inicio=start_time_reserva1,
         fin=start_time_reserva1 + timedelta(hours=1),
+        id_profesional=scenario["profesional_id"],
         url_archivo="https://test.com/virtual_session_1.pdf"
     )
 
@@ -151,6 +162,7 @@ def test_reservation_conflict_in_same_community(client: TestClient, session_test
         descripcion="Sesión conflictiva",
         inicio=start_time_reserva_conflict,
         fin=start_time_reserva_conflict + timedelta(hours=1),
+        id_profesional=scenario["profesional_id"],
         url_archivo="https://test.com/virtual_session_conflict.pdf"
     )
 
@@ -164,7 +176,8 @@ def test_reservation_conflict_in_same_community(client: TestClient, session_test
         reservation_ids=[reserva1.id_reserva], 
         session_ids=[sesion1.id_sesion, sesion_conflictiva.id_sesion], 
         community_ids=[scenario["comunidad1_id"]], 
-        service_ids=[scenario["servicio1_id"]])
+        service_ids=[scenario["servicio1_id"]],
+        profesional_ids=[scenario["profesional_id"]])
 
 def test_no_reservation_conflict_in_different_communities(client: TestClient, session_test: Session, test_user_token: str):
     headers = {"Authorization": f"Bearer {test_user_token}"}
@@ -183,6 +196,7 @@ def test_no_reservation_conflict_in_different_communities(client: TestClient, se
         descripcion="Test Session Comunidad A",
         inicio=start_time_reserva1,
         fin=start_time_reserva1 + timedelta(hours=1),
+        id_profesional=scenario["profesional_id"],
         url_archivo="https://test.com/virtual_session_1_commA.pdf"
     )
 
@@ -210,6 +224,7 @@ def test_no_reservation_conflict_in_different_communities(client: TestClient, se
         descripcion="Sesión sin conflicto Comunidad B",
         inicio=start_time_reserva2,
         fin=start_time_reserva2 + timedelta(hours=1),
+        id_profesional=scenario["profesional_id"],
         url_archivo="https://test.com/virtual_session_2.pdf"
     )
 
@@ -224,4 +239,5 @@ def test_no_reservation_conflict_in_different_communities(client: TestClient, se
         reservation_ids=[reserva1_comm_a.id_reserva, reserva2_comm_b_id], 
         session_ids=[sesion1_comm_a.id_sesion, sesion_sin_conflicto_comm_b.id_sesion], 
         community_ids=[scenario["comunidad1_id"], scenario["comunidad2_id"]], 
-        service_ids=[scenario["servicio1_id"], scenario["servicio2_id"]]) 
+        service_ids=[scenario["servicio1_id"], scenario["servicio2_id"]],
+        profesional_ids=[scenario["profesional_id"]]) 

@@ -75,7 +75,7 @@ def register_user(user_data):
 def get_comunidades_con_servicios(session: Session):
     comunidades = session.exec(select(Comunidad)).all()
     servicios = session.exec(select(Servicio)).all()
-    cxservicios = session.exec(select(ComunidadXServicio)).all()
+    cxservicios = session.exec(select(ComunidadXServicio).where(ComunidadXServicio.estado == 1)).all()
 
     servicios_por_comunidad = {c.id_comunidad: [] for c in comunidades}
     servicios_dict = {s.id_servicio: s for s in servicios}
@@ -104,7 +104,7 @@ def get_comunidades_con_servicios(session: Session):
 def get_comunidades_con_servicios_sin_imagen(session: Session):
     comunidades = session.exec(select(Comunidad)).all()
     servicios = session.exec(select(Servicio)).all()
-    cxservicios = session.exec(select(ComunidadXServicio)).all()
+    cxservicios = session.exec(select(ComunidadXServicio).where(ComunidadXServicio.estado == 1)).all()
 
     servicios_por_comunidad = {c.id_comunidad: [] for c in comunidades}
     servicios_dict = {s.id_servicio: s for s in servicios}
@@ -145,7 +145,8 @@ def unir_cliente_a_comunidad(session: Session, id_cliente: int, id_comunidad: in
 def obtener_servicios_de_comunidad(session: Session, id_comunidad: int):
     servicio_ids = session.exec(
         select(ComunidadXServicio.id_servicio).where(
-            ComunidadXServicio.id_comunidad == id_comunidad
+            ComunidadXServicio.id_comunidad == id_comunidad,
+            ComunidadXServicio.estado == 1
         )
     ).all()
 
