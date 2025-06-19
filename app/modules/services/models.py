@@ -57,14 +57,3 @@ class Profesional(SQLModel, table=True):
 
     # Relación inversa con Servicio
     servicio: Optional["Servicio"] = Relationship(back_populates="profesionales")
-
-class ProfesionalOut(SQLModel):
-    id_profesional: int
-    nombre_completo: Optional[str]  # <- Esto soluciona el primer error
-    id_servicio: Optional[int]      # <- Esto soluciona el segundo
-    formulario: Optional[str]
-
-class ProfesionalCreate(SQLModel):
-    nombre_completo: Optional[str]
-    id_servicio: Optional[int]
-    formulario: Optional[str]
