@@ -91,11 +91,13 @@ class LocalOut(BaseModel):
 
 class ProfesionalOut(BaseModel):
     id_profesional: int
-    nombre_completo: Optional[str]  # <- Esto soluciona el primer error
-    id_servicio: Optional[int]      # <- Esto soluciona el segundo
+    nombre_completo: Optional[str]
+    email: Optional[str]
+    id_servicio: Optional[int]
     formulario: Optional[str]
 
 class ProfesionalCreate(BaseModel):
     nombre_completo: Optional[str]
+    email: Optional[str]
     id_servicio: Optional[int]
     formulario: Optional[str]
