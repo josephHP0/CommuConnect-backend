@@ -28,6 +28,14 @@ def login(data: LoginRequest):
         response_data = TokenResponse(access_token=token, user_rol=user_rol)
         
         return response_data
+
+@router.get("/validar-token")
+def validar_token(current_user: Usuario = Depends(get_current_user)):
+    """
+    Endpoint para validar si un token es válido.
+    Retorna 200 OK si el token es válido, 401 si no lo es.
+    """
+    return {"valid": True, "user_id": current_user.id_usuario}
     
 @router.get("/tiene-comunidades")
 def tiene_comunidades(
