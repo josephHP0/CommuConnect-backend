@@ -4,10 +4,9 @@ from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_user
 from app.modules.users.dependencies import get_current_admin
-from app.modules.services.services import actualizar_servicio, crear_profesional, crear_servicio, eliminar_servicio, listar_locales_por_servicio, listar_profesionales, listar_servicios, obtener_profesionales_por_servicio, obtener_servicio_por_id
+from app.modules.services.services import actualizar_servicio, crear_profesional, crear_servicio, eliminar_servicio, listar_locales_por_servicio, listar_profesionales, listar_servicios, obtener_profesionales_por_servicio, obtener_servicio_por_id, obtener_distritos_por_servicio_service, procesar_archivo_locales, procesar_archivo_sesiones_presenciales
 from typing import List, Optional
 from app.modules.services.schemas import ProfesionalRead, ServicioCreate, ServicioRead, ServicioUpdate, ServicioOut
-from app.modules.services.services import obtener_distritos_por_servicio_service
 from app.modules.services.schemas import DistritoOut
 from app.modules.services.models import Local
 from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut
@@ -160,7 +159,68 @@ def obtener_locales_por_servicio(id_servicio: int, db: Session = Depends(get_ses
         raise HTTPException(status_code=404, detail="No se encontraron locales para este servicio")
     return locales
 
-
+@router.post("/locales/carga-masiva/{id_servicio}")
+def carga_masiva_locales(
+    id_servicio: int,
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_session),
+    current_admin: Usuario = Depends(get_current_admin)
+):
+    """
+    Endpoint para cargar locales masivamente a un servicio específico a través de un archivo Excel.
+    
+    **IMPORTANTE: Este endpoint es solo para ADMINISTRADORES**
+    
+    **Estructura del archivo Excel requerida (en este orden):**
+    1. **nombre** - Nombre del local (OBLIGATORIO)
+    2. **id_distrito** - ID del distrito (OBLIGATORIO)
+    3. **direccion_detallada** - Dirección completa del local (OBLIGATORIO)
+    4. **responsable** - Persona responsable del local (OPCIONAL)
+    5. **link** - URL o enlace relacionado (OPCIONAL)
+    
+    **Notas importantes:**
+    - El archivo debe ser .xlsx o .xls
+    - La primera fila debe contener los nombres de las columnas exactamente como se especifica
+    - El departamento se asigna automáticamente como 14 (por defecto)
+    - Se valida que el servicio exista antes de procesar
+    - Se evitan duplicados por nombre de local en el mismo servicio
+    
+    **Ejemplo de estructura:**
+    ```
+    nombre           | id_distrito | direccion_detallada    | responsable | link
+    Gimnasio Central | 1          | Av. Principal 123      | Juan Pérez  | 
+    Sala Yoga       | 2          | Calle Secundaria 456   |             | http://example.com
+    ```
+    
+    **Respuesta:**
+    - insertados: número de locales creados exitosamente
+    - omitidos: número de filas omitidas por campos vacíos o duplicados
+    - errores: lista de errores específicos por fila
+    """
+    try:
+        # Validar que el archivo sea Excel
+        if not archivo.filename or not archivo.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(
+                status_code=400, 
+                detail="El archivo debe ser un Excel (.xlsx o .xls)"
+            )
+        
+        resultado = procesar_archivo_locales(
+            db=db, 
+            archivo=archivo, 
+            id_servicio=id_servicio, 
+            creado_por=current_admin.email
+        )
+        
+        return {
+            "mensaje": "Carga masiva de locales completada",
+            "id_servicio": id_servicio,
+            "resumen": resultado
+        }
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al procesar archivo: {str(e)}")
 
 @router.get("/admin/comunidad/{id_comunidad}/servicios", response_model=List[ServicioOut])
 def listar_servicios_por_comunidad_admin(
@@ -375,3 +435,67 @@ def anhadir_servicio_a_comunidad(
             status_code=500, 
             detail=f"Error interno al añadir servicio: {str(e)}"
         )
+
+@router.post("/services/sesiones-presenciales/carga-masiva/{id_servicio}",
+             summary="Carga masiva de sesiones presenciales para un servicio - SOLO ADMINISTRADORES",
+             description="""
+             **IMPORTANTE: Este endpoint es solo para ADMINISTRADORES**
+             
+             Carga sesiones presenciales masivamente para un servicio específico a través de un archivo Excel.
+             
+             **Estructura del archivo Excel requerida (en este orden):**
+             1. **id_local** - ID del local donde se realizará la sesión (OBLIGATORIO)
+             2. **fecha_inicio** - Fecha y hora de inicio en formato DD/MM/YYYY HH:MM (OBLIGATORIO)
+             3. **fecha_fin** - Fecha y hora de fin en formato DD/MM/YYYY HH:MM (OBLIGATORIO)
+             4. **capacidad** - Capacidad máxima de participantes (OPCIONAL)
+             5. **descripcion** - Descripción de la sesión (OPCIONAL)
+             
+             **Notas importantes:**
+             - El archivo debe ser .xlsx o .xls
+             - La primera fila debe contener los nombres de las columnas exactamente como se especifica
+             - El tipo de sesión se asigna automáticamente como "Presencial"
+             - La fecha de fin debe ser posterior a la fecha de inicio
+             - El local debe existir en la base de datos
+             - Se valida que el servicio exista antes de procesar
+             - Si no se proporciona descripción, se asigna "Sesión presencial" por defecto
+             
+             **Ejemplo de estructura:**
+             ```
+             id_local | fecha_inicio      | fecha_fin         | capacidad | descripcion
+             1        | 15/03/2025 09:00  | 15/03/2025 10:00  | 20        | Yoga Básico
+             2        | 16/03/2025 14:00  | 16/03/2025 15:30  |           | 
+             ```
+             
+             **Respuesta:**
+             - insertados: número de sesiones creadas exitosamente
+             - omitidos: número de filas omitidas por campos vacíos
+             - errores: lista de errores específicos por fila
+             """)
+async def carga_masiva_sesiones_presenciales(
+    id_servicio: int,
+    archivo: UploadFile = File(..., description="Archivo Excel con las sesiones presenciales"),
+    session: Session = Depends(get_session),
+    admin: dict = Depends(get_current_admin)
+):
+    """
+    Endpoint para carga masiva de sesiones presenciales - SOLO ADMINISTRADORES
+    """
+    # Validar formato del archivo
+    if not archivo.filename or not archivo.filename.endswith(('.xlsx', '.xls')):
+        raise HTTPException(
+            status_code=400,
+            detail="El archivo debe ser un Excel válido (.xlsx o .xls)"
+        )
+    
+    # Procesar archivo
+    resultado = procesar_archivo_sesiones_presenciales(
+        db=session,
+        archivo=archivo,
+        id_servicio=id_servicio,
+        creado_por=admin["email"]
+    )
+    
+    return {
+        "mensaje": f"Procesamiento completado para el servicio {id_servicio}",
+        "resultado": resultado
+    }
