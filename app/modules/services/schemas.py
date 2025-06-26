@@ -31,6 +31,7 @@ class ProfesionalRead(BaseModel):
     fecha_modificacion: Optional[datetime]
     modificado_por: Optional[str]
     estado: Optional[bool]
+    email: Optional[str]  # <-- Añade este campo
 
     model_config = ConfigDict(from_attributes=True)
 
