@@ -9,6 +9,8 @@ from app.modules.services.models import Local      # Modelo Local dentro de serv
 from app.modules.services.schemas import DistritoOut, ServicioCreate, ServicioRead, ServicioUpdate  # Esquema de salida (DTO)
 import base64
 from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut
+import pandas as pd
+
 
 def obtener_servicios_por_ids(session: Session, servicio_ids: List[int]):
     if not servicio_ids:
@@ -191,3 +193,54 @@ def listar_locales_por_servicio(db: Session, id_servicio: int) -> list[Local]:
         Local.estado == 1
     )
     return db.exec(query).all()
+
+
+def procesar_archivo_profesionales(db: Session, archivo: UploadFile, creado_por: str):
+    df = pd.read_excel(archivo.file)
+
+    resumen = {
+        "insertados": 0,
+        "omitidos": 0,
+        "errores": []
+    }
+
+    for idx, fila in df.iterrows():
+        try:
+            email = str(fila.get("email")).strip().lower()
+
+            if pd.isna(email) or email == "":
+                resumen["omitidos"] += 1
+                continue
+
+            existe = db.exec(select(Profesional).where(Profesional.email == email)).first()
+            if existe:
+                resumen["omitidos"] += 1
+                continue
+
+            servicio_id = int(fila.get("id_servicio")) if not pd.isna(fila.get("id_servicio")) else None
+            if servicio_id:
+                servicio = db.exec(select(Servicio).where(Servicio.id_servicio == servicio_id)).first()
+                if not servicio:
+                    resumen["errores"].append(f"Fila {idx + 2}: servicio {servicio_id} no existe")
+                    continue
+
+            nuevo_profesional = Profesional(
+                nombre_completo=str(fila.get("nombre_completo")).strip() if not pd.isna(fila.get("nombre_completo")) else None,
+                email=email,
+                id_servicio=servicio_id,
+                formulario=str(fila.get("formulario")).strip() if not pd.isna(fila.get("formulario")) else None,
+                creado_por=creado_por,
+                fecha_creacion=datetime.utcnow(),
+                estado=1
+            )
+
+            db.add(nuevo_profesional)
+            db.commit()
+            resumen["insertados"] += 1
+
+        except Exception as e:
+            db.rollback()
+            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")
+
+    return resumen
+

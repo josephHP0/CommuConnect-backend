@@ -14,6 +14,9 @@ from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut
 from app.modules.services.schemas import LocalOut
 from app.modules.users.models import Usuario
 from app.modules.communities.services import obtener_servicios_con_imagen_base64
+from ..services.services import procesar_archivo_profesionales
+
+
 router = APIRouter()
 
 @router.get("/profesionales/{id_servicio}", response_model=List[ProfesionalRead])
@@ -375,3 +378,18 @@ def anhadir_servicio_a_comunidad(
             status_code=500, 
             detail=f"Error interno al añadir servicio: {str(e)}"
         )
+
+
+@router.post("/carga-masiva")
+def carga_masiva_profesionales(
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_session),
+    current_admin: Usuario = Depends(get_current_admin)
+):
+    try:
+        resultado = procesar_archivo_profesionales(db, archivo, current_admin.email)
+        return {"mensaje": "Carga masiva completada", "resumen": resultado}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+

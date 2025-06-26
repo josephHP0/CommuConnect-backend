@@ -101,3 +101,4 @@ class ProfesionalCreate(BaseModel):
     email: Optional[str]
     id_servicio: Optional[int]
     formulario: Optional[str]
+
