@@ -2,7 +2,6 @@ from datetime import datetime
 from typing import Optional
 from fastapi import HTTPException
 from sqlmodel import Session, select
-from sqlalchemy import text
 
 from app.modules.communities.models import ClienteXComunidad, Comunidad, ComunidadXPlan
 from .schemas import ComunidadXPlanCreate, DetalleInscripcionCreate
@@ -134,23 +133,74 @@ def pagar_pendiente(
     id_comunidad: int,
     creado_por: str
 ):
-    try:
-        session.execute(
-            text("CALL PagarPendiente(:p_id_cliente, :p_id_comunidad, :p_creado_por)"),
-            {
-                "p_id_cliente": id_cliente,
-                "p_id_comunidad": id_comunidad,
-                "p_creado_por": creado_por
-            }
+    # Busca la inscripción pendiente de pago del cliente en la comunidad
+    inscripcion = session.exec(
+        select(Inscripcion)
+        .where(
+            Inscripcion.id_cliente == id_cliente,
+            Inscripcion.id_comunidad == id_comunidad,
+            Inscripcion.estado == 3  # Solo pendiente de pago
         )
+    ).first()
+    if not inscripcion or not inscripcion.id_pago:
+        raise HTTPException(status_code=404, detail="No hay pago pendiente para esta comunidad, redirigase a la página de inscripción")
+
+    # Busca el pago pendiente
+    pago = session.get(Pago, inscripcion.id_pago)
+    if not pago or pago.estado != 3:
+        raise HTTPException(status_code=404, detail="No hay pago pendiente para esta comunidad")
+
+    # Actualiza el pago
+    pago.fecha_pago = datetime.utcnow()
+    pago.metodo_pago = MetodoPago.Tarjeta
+    pago.estado = 1  # Pagado
+    pago.modificado_por = creado_por
+    session.add(pago)
+    session.commit()
+    session.refresh(pago)
+
+    # Cambia el estado de la inscripción a 1 (activa)
+    inscripcion.estado = 1
+    inscripcion.modificado_por = creado_por
+    inscripcion.fecha_modificacion = datetime.utcnow()
+    session.add(inscripcion)
+    session.commit()
+    session.refresh(inscripcion)
+
+    # Registrar la relación solo si no existe ya
+    existe_relacion = session.exec(
+        select(ClienteXComunidad).where(
+            ClienteXComunidad.id_cliente == id_cliente,
+            ClienteXComunidad.id_comunidad == id_comunidad
+        )
+    ).first()
+    if not existe_relacion:
+        relacion = ClienteXComunidad(
+            id_cliente=id_cliente,
+            id_comunidad=id_comunidad
+        )
+        session.add(relacion)
         session.commit()
-        return {"ok": True, "message": "Pago realizado exitosamente"}
-    except Exception as e:
-        session.rollback()
-        detail = str(e)
-        if hasattr(e, "orig") and hasattr(e.orig, "args") and len(e.orig.args) > 1: # type: ignore
-            detail = e.orig.args[1] # type: ignore
-        raise HTTPException(status_code=400, detail=detail)
+        session.refresh(relacion)
+
+    # Registrar el detalle de la inscripción si el plan tiene topes y no existe detalle
+    plan = session.get(Plan, inscripcion.id_plan)
+    if plan and plan.topes is not None:
+        detalle_existente = session.exec(
+            select(DetalleInscripcion).where(
+                DetalleInscripcion.id_inscripcion == inscripcion.id_inscripcion
+            )
+        ).first()
+        if not detalle_existente:
+            crear_detalle_inscripcion(
+                session=session,
+                id_inscripcion=inscripcion.id_inscripcion,  # type: ignore
+                creado_por=creado_por
+            )
+
+    return pago
+
+
 
 def obtener_inscripcion_activa(session: Session, id_cliente: int, id_comunidad: int) -> Inscripcion:
     query = select(Inscripcion).where(

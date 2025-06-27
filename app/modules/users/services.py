@@ -15,7 +15,6 @@ from app.modules.communities.models import ClienteXComunidad, Comunidad
 from app.modules.billing.models import Inscripcion
 import base64
 import pandas as pd
-from io import BytesIO
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -254,7 +253,7 @@ def obtener_cliente_con_usuario_por_id(db: Session, id_cliente: int):
     return cliente
 
 def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str):
-    df = pd.read_excel(BytesIO(archivo.file.read()), engine="openpyxl")
+    df = pd.read_excel(archivo.file)
 
     resumen = {
         "insertados": 0,
