@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
 from fastapi import HTTPException, UploadFile
 from sqlmodel import Session, select
-from app.modules.services.models import ProfesionalCreate, Servicio, Profesional
+from app.modules.services.models import  Servicio, Profesional
 from app.modules.reservations.models import SesionVirtual,Sesion
 from typing import List, Optional
 from app.modules.geography.models import Distrito  # Modelo de geografía
 from app.modules.services.models import Local      # Modelo Local dentro de services
 from app.modules.services.schemas import DistritoOut, ServicioCreate, ServicioRead, ServicioUpdate  # Esquema de salida (DTO)
 import base64
+from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut
 
 def obtener_servicios_por_ids(session: Session, servicio_ids: List[int]):
     if not servicio_ids:
@@ -171,6 +172,7 @@ def listar_profesionales(db: Session) -> list[Profesional]:
 def crear_profesional(db: Session, data: ProfesionalCreate, creado_por: str) -> Profesional:
     nuevo_profesional = Profesional(
         nombre_completo=data.nombre_completo,
+        email=data.email,
         id_servicio=data.id_servicio,
         formulario=data.formulario,
         fecha_creacion=datetime.utcnow(),
@@ -181,6 +183,7 @@ def crear_profesional(db: Session, data: ProfesionalCreate, creado_por: str) -> 
     db.commit()
     db.refresh(nuevo_profesional)
     return nuevo_profesional
+
 
 def listar_locales_por_servicio(db: Session, id_servicio: int) -> list[Local]:
     query = select(Local).where(

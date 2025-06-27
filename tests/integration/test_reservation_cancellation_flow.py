@@ -38,6 +38,7 @@ def _create_test_reservation(session: Session, client_id: int):
     reserva = Reserva(
         id_sesion=sesion.id_sesion,
         id_cliente=client_id,
+        id_comunidad=comunidad.id_comunidad,
         estado_reserva="confirmada",
     )
     session.add(reserva)

@@ -147,7 +147,7 @@ def pagar_pendiente(
 
     # Busca el pago pendiente
     pago = session.get(Pago, inscripcion.id_pago)
-    if not pago or pago.estado != 0:
+    if not pago or pago.estado != 3:
         raise HTTPException(status_code=404, detail="No hay pago pendiente para esta comunidad")
 
     # Actualiza el pago

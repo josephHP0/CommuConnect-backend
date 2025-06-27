@@ -88,3 +88,16 @@ class LocalOut(BaseModel):
     direccion_detallada: Optional[str]
     link: Optional[str]
     responsable: Optional[str]
+
+class ProfesionalOut(BaseModel):
+    id_profesional: int
+    nombre_completo: Optional[str]
+    email: Optional[str]
+    id_servicio: Optional[int]
+    formulario: Optional[str]
+
+class ProfesionalCreate(BaseModel):
+    nombre_completo: Optional[str]
+    email: Optional[str]
+    id_servicio: Optional[int]
+    formulario: Optional[str]

@@ -70,9 +70,33 @@ async def admin_token(async_client: AsyncClient) -> str:
 # --- Synchronous Test Fixtures (for legacy tests) ---
 @pytest.fixture(name="session_test")
 def session_fixture():
-    """Provides a session for synchronous tests."""
+    """
+    Provides a session for synchronous tests. It ensures a clean state
+    by cleaning the test user and then commits the transaction.
+    """
+    # Safeguard: directly clean up the test user if it exists
+    with Session(engine) as cleanup_session:
+        existing_user = cleanup_session.exec(select(Usuario).where(Usuario.email == "jitojif852@adrewire.com")).first()
+        if existing_user:
+            existing_cliente = cleanup_session.exec(select(Cliente).where(Cliente.id_usuario == existing_user.id_usuario)).first()
+            if existing_cliente:
+                # This needs to be more thorough to avoid foreign key issues
+                reservas = cleanup_session.exec(select(Reserva).where(Reserva.id_cliente == existing_cliente.id_cliente)).all()
+                for r in reservas: cleanup_session.delete(r)
+                
+                inscripciones = cleanup_session.exec(select(Inscripcion).where(Inscripcion.id_cliente == existing_cliente.id_cliente)).all()
+                for i in inscripciones:
+                    detalles = cleanup_session.exec(select(DetalleInscripcion).where(DetalleInscripcion.id_inscripcion == i.id_inscripcion)).all()
+                    for d in detalles: cleanup_session.delete(d)
+                    cleanup_session.delete(i)
+                
+                cleanup_session.delete(existing_cliente)
+            cleanup_session.delete(existing_user)
+        cleanup_session.commit()
+
     with Session(engine) as session:
         yield session
+        session.commit() # Commit changes made during the test
 
 @pytest.fixture(name="client")
 def client_fixture(session_test: Session):
@@ -88,44 +112,39 @@ def client_fixture(session_test: Session):
 
 @pytest.fixture(scope="function")
 def test_user_token(client: TestClient, session_test: Session) -> str:
-    """Creates a standard client user, handling cleanup, and returns an auth token."""
-    test_user_data = {
-        "nombre": "Test", "apellido": "User", "email": "jitojif852@adrewire.com",
-        "password": "testpassword", "tipo_documento": "DNI", "num_doc": "12345678",
-        "numero_telefono": "987654321", "id_departamento": 14, "id_distrito": 1,
-        "talla": 170, "peso": 70
-    }
+    """
+    Creates a standard client user directly in the DB using the transactional session,
+    activates it, and returns an auth token. This is the most robust way.
+    """
+    # 1. Create user directly in the transactional session
+    user_email = "jitojif852@adrewire.com"
+    user_password = "testpassword"
+
+    usuario_data = UsuarioCreate(
+        nombre="Test",
+        apellido="User",
+        email=user_email,
+        password=user_password,
+        tipo=TipoUsuario.Cliente
+    )
+    new_user = crear_usuario(db=session_test, usuario=usuario_data)
+    new_user.estado = True # Activate user
     
-    # Comprehensive cleanup logic from the old conftest
-    existing_cliente = session_test.exec(select(Cliente).where(Cliente.num_doc == test_user_data["num_doc"])).first()
-    if existing_cliente:
-        reservas = session_test.exec(select(Reserva).where(Reserva.id_cliente == existing_cliente.id_cliente)).all()
-        for r in reservas: session_test.delete(r)
-        
-        inscripciones = session_test.exec(select(Inscripcion).where(Inscripcion.id_cliente == existing_cliente.id_cliente)).all()
-        for i in inscripciones:
-             detalles = session_test.exec(select(DetalleInscripcion).where(DetalleInscripcion.id_inscripcion == i.id_inscripcion)).all()
-             for d in detalles: session_test.delete(d)
-             session_test.delete(i)
-
-        user_to_delete = session_test.get(Usuario, existing_cliente.id_usuario)
-        session_test.delete(existing_cliente)
-        if user_to_delete: session_test.delete(user_to_delete)
-        session_test.commit()
-
-    # Create user via API
-    response = client.post("/api/usuarios/cliente", json=test_user_data)
-    assert response.status_code == 200, f"Failed to create client: {response.text}"
-
-    # Activate user directly in DB
-    user_db = session_test.exec(select(Usuario).where(Usuario.email == test_user_data["email"])).first()
-    assert user_db, "User not found after creation"
-    user_db.estado = True
-    session_test.add(user_db)
+    cliente_data = Cliente(
+        id_usuario=new_user.id_usuario,
+        tipo_documento="DNI",
+        num_doc="12345678",
+        numero_telefono="987654321",
+        id_departamento=14,
+        id_distrito=1,
+        talla=170,
+        peso=70
+    )
+    session_test.add_all([new_user, cliente_data])
     session_test.commit()
 
-    # Login to get token
-    login_data = {"email": test_user_data["email"], "password": test_user_data["password"]}
+    # 2. Login via API to get token
+    login_data = {"email": user_email, "password": user_password}
     token_response = client.post("/api/auth/login", json=login_data)
-    assert token_response.status_code == 200, f"Failed to get token: {token_response.text}"
+    assert token_response.status_code == 200, f"Failed to get token for test user: {token_response.text}"
     return token_response.json()["access_token"] 
