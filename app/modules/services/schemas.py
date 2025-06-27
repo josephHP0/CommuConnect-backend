@@ -6,6 +6,7 @@ from typing import Optional, List
 
 from app.core.enums import ModalidadServicio
 from utils.datetime_utils import convert_utc_to_local
+from datetime import date, time
 
 class ServicioResumen(BaseModel):
     nombre: str
@@ -102,3 +103,35 @@ class ProfesionalCreate(BaseModel):
     id_servicio: Optional[int]
     formulario: Optional[str]
 
+class SesionVirtualConDetalle(BaseModel):
+    id_sesion_virtual: int
+    id_sesion: int
+    fecha: Optional[date]
+    hora_inicio: Optional[time]
+    hora_fin: Optional[time]
+    inscritos: int
+
+    class Config:
+        from_attributes = True  
+
+class ProfesionalDetalleOut(BaseModel):
+    nombre: str
+    apellido: str
+    email: Optional[str]
+
+
+class InscritoDetalleOut(BaseModel):
+    nombre: str
+    apellido: str
+    comunidad: str
+    entrego_archivo: bool
+
+
+class DetalleSesionVirtualResponse(BaseModel):
+    id_sesion_virtual: int
+    descripcion: Optional[str]
+    fecha: Optional[date]
+    hora_inicio: Optional[time]
+    hora_fin: Optional[time]
+    profesional: ProfesionalDetalleOut
+    inscritos: List[InscritoDetalleOut]
