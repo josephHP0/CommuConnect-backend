@@ -5,8 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.exc import IntegrityError
 import pytz
-import pandas as pd
-import numpy as np
+
 from fastapi import BackgroundTasks, HTTPException, UploadFile
 
 from app.modules.billing.models import DetalleInscripcion
@@ -20,14 +19,6 @@ from app.modules.services.models import ComunidadXServicio, Local, Profesional, 
 from app.modules.users.models import Cliente, Usuario
 from utils.datetime_utils import convert_local_to_utc, convert_utc_to_local
 from utils.email_brevo import send_form_email, send_reservation_email
-
-from app.modules.reservations.schemas import SesionCargaMasiva
-from pydantic import ValidationError
-
-from datetime import datetime, timezone
-
-
-
 
 def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_comunidad: int, fecha: date):
     end_date = fecha + timedelta(days=7)
@@ -929,113 +920,3 @@ def verificar_cruce_de_reservas(db: Session, id_cliente: int, id_comunidad: int,
     ).first()
 
     return reservas_existentes is not None
-
-
-
-
-
-def procesar_archivo_sesiones(db: Session, archivo, creado_por: str):
-
-    df = pd.read_excel(archivo.file)
-
-    # ✅ Línea clave: reemplaza todos los NaN por None
-    df = df.replace({np.nan: None})
-
-    resumen = {
-        "insertados": 0,
-        "omitidos": 0,
-        "errores": []
-    }
-
-    for idx, fila in df.iterrows():
-        try:
-            datos = SesionCargaMasiva.model_validate(fila.to_dict())
-            resultado = procesar_fila_sesion(datos, db, creado_por)
-            if resultado == "omitido":
-                resumen["omitidos"] += 1
-            else:
-                resumen["insertados"] += 1
-        except ValidationError as ve:
-            resumen["errores"].append(f"Fila {idx + 2}: Error de validación: {ve}")
-        except Exception as e:
-            db.rollback()
-            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")
-
-    return resumen
-
-def procesar_fila_sesion(datos: SesionCargaMasiva, db: Session, creado_por: str) -> str:
-    validar_servicio_existente(datos.id_servicio, datos.modalidad, db)
-    nueva_sesion = crear_sesion_base(datos, creado_por, db)
-
-    if datos.modalidad.lower() == "presencial":
-        procesar_presencial(datos, nueva_sesion.id_sesion, db, creado_por)
-    elif datos.modalidad.lower() == "virtual":
-        procesar_virtual(datos, nueva_sesion.id_sesion, db, creado_por)
-    else:
-        raise ValueError("Modalidad inválida. Debe ser 'Presencial' o 'Virtual'")
-
-    db.commit()
-    return "insertado"
-
-def validar_servicio_existente(id_servicio: int, modalidad: str, db: Session):
-    servicio = db.exec(select(Servicio).where(Servicio.id_servicio == id_servicio)).first()
-    if not servicio:
-        raise ValueError(f"Servicio {id_servicio} no existe")
-    if servicio.modalidad.lower() != modalidad.lower():
-        raise ValueError(f"Modalidad no coincide con el servicio (esperado: {servicio.modalidad})")
-    return servicio
-
-def validar_servicio_en_comunidad(id_servicio: int, id_comunidad: int, db: Session):
-    existe = db.exec(
-        select(ComunidadXServicio).where(
-            (ComunidadXServicio.id_servicio == id_servicio) &
-            (ComunidadXServicio.id_comunidad == id_comunidad)
-        )
-    ).first()
-    if not existe:
-        raise ValueError(f"El servicio {id_servicio} no está habilitado para la comunidad {id_comunidad}")
-
-def crear_sesion_base(datos: SesionCargaMasiva, creado_por: str, db: Session):
-    nueva_sesion = Sesion(
-        id_servicio=datos.id_servicio,
-        tipo=datos.modalidad.capitalize(),
-        descripcion=f"Sesión de servicio {datos.id_servicio}",  # Si usas un campo `descripcion`
-        inicio=datos.fecha_inicio,
-        creado_por=creado_por,
-        fecha_creacion=datetime.now(timezone.utc),
-        estado=1
-    )
-    db.add(nueva_sesion)
-    db.flush()
-    return nueva_sesion
-
-def procesar_presencial(datos: SesionCargaMasiva, id_sesion: int, db: Session, creado_por: str):
-    local = db.exec(select(Local).where(Local.id_local == datos.id_local)).first()
-    if not local:
-        raise ValueError(f"Local {datos.id_local} no existe")
-
-    nueva = SesionPresencial(
-        id_sesion=id_sesion,
-        id_local=datos.id_local,
-        capacidad=datos.capacidad,
-        creado_por=creado_por,
-        fecha_creacion=datetime.now(timezone.utc),
-        estado=1
-    )
-    db.add(nueva)
-
-def procesar_virtual(datos: SesionCargaMasiva, id_sesion: int, db: Session, creado_por: str):
-    profesional = db.exec(select(Profesional).where(Profesional.id_profesional == datos.id_profesional)).first()
-    if not profesional:
-        raise ValueError(f"Profesional {datos.id_profesional} no existe")
-
-    nueva = SesionVirtual(
-        id_sesion=id_sesion,
-        id_profesional=datos.id_profesional,
-        url_meeting=datos.url_meeting,
-        url_archivo=datos.url_archivo,
-        creado_por=creado_por,
-        fecha_creacion=datetime.now(timezone.utc),
-        estado=1
-    )
-    db.add(nueva)
