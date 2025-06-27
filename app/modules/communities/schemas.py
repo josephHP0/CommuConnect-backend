@@ -22,7 +22,7 @@ class ComunidadRead(BaseModel):
     creado_por: Optional[str] = None
     fecha_modificacion: Optional[datetime] = None
     modificado_por: Optional[str] = None
-    estado: bool 
+    estado: int 
 
     @validator('fecha_creacion', 'fecha_modificacion', pre=True, always=True)
     def localize_dates(cls, v):

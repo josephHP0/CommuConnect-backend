@@ -16,7 +16,7 @@ from app.modules.communities.services import editar_comunidad_service
 
 router = APIRouter()
 
-@router.post("/crear_comunidad", response_model=ComunidadRead)
+@router.post("/crear_comunidad", response_model=ComunidadOut)
 async def crear_comunidad(
     nombre: str = Form(...),
     slogan: Optional[str] = Form(None),
@@ -84,7 +84,7 @@ def eliminar_comunidad(
         logger.error(f"❌ Error inesperado al eliminar comunidad {id_comunidad}: {str(e)}")
         raise HTTPException(status_code=500, detail="Error inesperado al eliminar comunidad")
 
-@router.put("/editar_comunidad/{id_comunidad}")
+@router.put("/editar_comunidad/{id_comunidad}", response_model=ComunidadOut)
 async def editar_comunidad(
     id_comunidad: int,
     nombre: Optional[str] = Form(None),
@@ -121,7 +121,7 @@ def comunidades_con_servicios_sinImagen(session: Session = Depends(get_session))
     return get_comunidades_con_servicios_sin_imagen(session)
 
 #Endpoint para obtener una comunidad por ID
-@router.get("/comunidad/{id_comunidad}", response_model=ComunidadRead)
+@router.get("/comunidad/{id_comunidad}", response_model=ComunidadOut)
 def obtener_comunidad_por_id(
     id_comunidad: int,
     session: Session = Depends(get_session)

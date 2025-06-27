@@ -12,7 +12,8 @@ class Plan(SQLModel, table=True):
     titulo: str = Field(max_length=100)
     descripcion: str = Field(max_length=300)
     duracion: int
-    topes: int
+    #topes: int
+    topes: Optional[int] = Field(default=None)
     precio: float = Field(sa_column=Column(DECIMAL(10, 2)))
     fecha_creacion: datetime = Field(default_factory=datetime.utcnow)
     creado_por: str = Field(max_length=50)

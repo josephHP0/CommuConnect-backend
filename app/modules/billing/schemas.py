@@ -7,7 +7,8 @@ class PlanOut(BaseModel):
     id_plan: int
     titulo: str
     descripcion: str
-    topes: Union[int, str]
+    #topes: Union[int, str]
+    topes: Optional[Union[int, str]] = None
     precio: float
     duracion: Optional[int]
 

@@ -1,14 +1,20 @@
 from datetime import datetime, timezone
 from fastapi import HTTPException, UploadFile
-from sqlmodel import Session, select
+from sqlmodel import Session, select, func
 from app.modules.services.models import  Servicio, Profesional
-from app.modules.reservations.models import SesionVirtual,Sesion
+from app.modules.reservations.models import SesionVirtual,Sesion, Reserva  
 from typing import List, Optional
 from app.modules.geography.models import Distrito  # Modelo de geografía
-from app.modules.services.models import Local      # Modelo Local dentro de services
+from app.modules.services.models import Local, Profesional      # Modelo Local dentro de services
 from app.modules.services.schemas import DistritoOut, ServicioCreate, ServicioRead, ServicioUpdate  # Esquema de salida (DTO)
 import base64
-from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut
+from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut, SesionVirtualConDetalle
+import pandas as pd
+from .schemas import DetalleSesionVirtualResponse, ProfesionalDetalleOut, InscritoDetalleOut
+from app.modules.users.models import Cliente, Usuario
+from app.modules.communities.models import Comunidad
+
+
 
 def obtener_servicios_por_ids(session: Session, servicio_ids: List[int]):
     if not servicio_ids:
@@ -191,3 +197,156 @@ def listar_locales_por_servicio(db: Session, id_servicio: int) -> list[Local]:
         Local.estado == 1
     )
     return db.exec(query).all()
+
+
+def procesar_archivo_profesionales(db: Session, archivo: UploadFile, creado_por: str):
+    df = pd.read_excel(archivo.file)
+
+    resumen = {
+        "insertados": 0,
+        "omitidos": 0,
+        "errores": []
+    }
+
+    for idx, fila in df.iterrows():
+        try:
+            email = str(fila.get("email")).strip().lower()
+
+            if pd.isna(email) or email == "":
+                resumen["omitidos"] += 1
+                continue
+
+            existe = db.exec(select(Profesional).where(Profesional.email == email)).first()
+            if existe:
+                resumen["omitidos"] += 1
+                continue
+
+            servicio_id = int(fila.get("id_servicio")) if not pd.isna(fila.get("id_servicio")) else None
+            if servicio_id:
+                servicio = db.exec(select(Servicio).where(Servicio.id_servicio == servicio_id)).first()
+                if not servicio:
+                    resumen["errores"].append(f"Fila {idx + 2}: servicio {servicio_id} no existe")
+                    continue
+
+            nuevo_profesional = Profesional(
+                nombre_completo=str(fila.get("nombre_completo")).strip() if not pd.isna(fila.get("nombre_completo")) else None,
+                email=email,
+                id_servicio=servicio_id,
+                formulario=str(fila.get("formulario")).strip() if not pd.isna(fila.get("formulario")) else None,
+                creado_por=creado_por,
+                fecha_creacion=datetime.utcnow(),
+                estado=1
+            )
+
+            db.add(nuevo_profesional)
+            db.commit()
+            resumen["insertados"] += 1
+
+        except Exception as e:
+            db.rollback()
+            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")
+
+    return resumen
+
+
+def obtener_sesiones_virtuales_por_profesional(
+    db: Session, id_profesional: int
+) -> List[SesionVirtualConDetalle]:
+    sesiones_virtuales = db.exec(
+        select(SesionVirtual).where(SesionVirtual.id_profesional == id_profesional)
+    ).all()
+
+    resultado = []
+
+    for sv in sesiones_virtuales:
+        sesion = db.exec(
+            select(Sesion).where(Sesion.id_sesion == sv.id_sesion)
+        ).first()
+
+        if sesion:
+            inscritos_resultado = db.exec(
+                select(func.count(Reserva.id_reserva)).where(Reserva.id_sesion == sesion.id_sesion)
+            ).one()
+
+            inscritos = inscritos_resultado[0] if isinstance(inscritos_resultado, tuple) else inscritos_resultado
+
+            resultado.append(SesionVirtualConDetalle(
+                id_sesion_virtual=sv.id_sesion_virtual,
+                id_sesion=sesion.id_sesion,
+                fecha=sesion.inicio.date() if sesion.inicio else None,
+                hora_inicio=sesion.inicio.time() if sesion.inicio else None,
+                hora_fin=sesion.fin.time() if sesion.fin else None,
+                inscritos=inscritos
+            ))
+
+    return resultado
+
+
+
+
+def obtener_detalle_sesion_virtual(id_sesion_virtual: int, db: Session) -> DetalleSesionVirtualResponse:
+    sv, sesion, profesional = get_sesion_virtual_con_profesional(id_sesion_virtual, db)
+
+    profesional_out = formatear_profesional(profesional)
+    inscritos_out = listar_inscritos_de_sesion(sv.id_sesion, db)
+
+    return DetalleSesionVirtualResponse(
+        id_sesion_virtual=sv.id_sesion_virtual,
+        descripcion=sesion.descripcion,
+        fecha=sesion.inicio.date() if sesion.inicio else None,
+        hora_inicio=sesion.inicio.time() if sesion.inicio else None,
+        hora_fin=sesion.fin.time() if sesion.fin else None,
+        profesional=profesional_out,
+        inscritos=inscritos_out
+    )
+
+def get_sesion_virtual_con_profesional(id_sesion_virtual: int, db: Session):
+    sv = db.get(SesionVirtual, id_sesion_virtual)
+    if not sv:
+        raise HTTPException(status_code=404, detail="Sesión virtual no encontrada")
+
+    sesion = db.get(Sesion, sv.id_sesion)
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión base no encontrada")
+
+    profesional = db.get(Profesional, sv.id_profesional)
+    if not profesional:
+        raise HTTPException(status_code=404, detail="Profesional no encontrado")
+
+    return sv, sesion, profesional
+
+
+def formatear_profesional(profesional: Profesional) -> ProfesionalDetalleOut:
+    if profesional.nombre_completo:
+        partes = profesional.nombre_completo.strip().split(" ", 1)
+        nombre = partes[0]
+        apellido = partes[1] if len(partes) > 1 else ""
+    else:
+        nombre, apellido = "", ""
+
+    return ProfesionalDetalleOut(
+        nombre=nombre,
+        apellido=apellido,
+        email=profesional.email
+    )
+
+def listar_inscritos_de_sesion(id_sesion: int, db: Session) -> List[InscritoDetalleOut]:
+    reservas = db.exec(
+        select(Reserva).where(Reserva.id_sesion == id_sesion)
+    ).all()
+
+    inscritos = []
+
+    for reserva in reservas:
+        cliente = db.get(Cliente, reserva.id_cliente)
+        usuario = db.get(Usuario, cliente.id_usuario)
+        comunidad = db.get(Comunidad, reserva.id_comunidad)
+
+        inscritos.append(InscritoDetalleOut(
+            nombre=usuario.nombre,
+            apellido=usuario.apellido,
+            comunidad=comunidad.nombre,
+            entrego_archivo=bool(reserva.archivo)
+        ))
+
+    return inscritos
