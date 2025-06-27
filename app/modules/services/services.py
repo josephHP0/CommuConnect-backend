@@ -69,8 +69,12 @@ def obtener_distritos_por_servicio_service(session: Session, id_servicio: int) -
     return resultado
 
 
-def listar_servicios(db: Session) -> list[ServicioRead]:
-    servicios = db.exec(select(Servicio)).all()
+def listar_servicios(db: Session, search: Optional[str] = None) -> list[ServicioRead]:
+    query = select(Servicio)
+    if search:
+        query = query.where(Servicio.nombre.ilike(f"%{search}%"))
+        
+    servicios = db.exec(query).all()
     resultado = []
     for servicio in servicios:
         servicio_dict = servicio.dict()

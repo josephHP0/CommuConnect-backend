@@ -51,8 +51,11 @@ def obtener_locales_por_servicio_y_distrito(
     return locales
 
 @router.get("/servicios", response_model=list[ServicioRead])
-def listar_todos_los_servicios(session: Session = Depends(get_session)):
-    return listar_servicios(session)
+def listar_todos_los_servicios(
+    session: Session = Depends(get_session),
+    q: Optional[str] = Query(None, description="Término de búsqueda para filtrar servicios por nombre")
+):
+    return listar_servicios(session, search=q)
 
 @router.post("/servicios", response_model=ServicioRead)
 def crear_servicio_endpoint(
@@ -152,14 +155,14 @@ def registrar_profesional_con_servicio(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@router.get("/por-servicio/{id_servicio}", response_model=list[LocalOut])
+@router.get("/locales-por-servicio/{id_servicio}", response_model=list[LocalOut])
 def obtener_locales_por_servicio(id_servicio: int, db: Session = Depends(get_session)):
     locales = listar_locales_por_servicio(db, id_servicio)
     if not locales:
         raise HTTPException(status_code=404, detail="No se encontraron locales para este servicio")
     return locales
 
-@router.post("/locales/carga-masiva/{id_servicio}")
+@router.post("/locales-carga-masiva/{id_servicio}")
 def carga_masiva_locales(
     id_servicio: int,
     archivo: UploadFile = File(...),
@@ -436,7 +439,7 @@ def anhadir_servicio_a_comunidad(
             detail=f"Error interno al añadir servicio: {str(e)}"
         )
 
-@router.post("/services/sesiones-presenciales/carga-masiva/{id_servicio}",
+@router.post("/sesiones-presenciales/carga-masiva/{id_servicio}",
              summary="Carga masiva de sesiones presenciales para un servicio - SOLO ADMINISTRADORES",
              description="""
              **IMPORTANTE: Este endpoint es solo para ADMINISTRADORES**
@@ -475,7 +478,7 @@ async def carga_masiva_sesiones_presenciales(
     id_servicio: int,
     archivo: UploadFile = File(..., description="Archivo Excel con las sesiones presenciales"),
     session: Session = Depends(get_session),
-    admin: dict = Depends(get_current_admin)
+    admin: Usuario = Depends(get_current_admin)
 ):
     """
     Endpoint para carga masiva de sesiones presenciales - SOLO ADMINISTRADORES
@@ -492,7 +495,7 @@ async def carga_masiva_sesiones_presenciales(
         db=session,
         archivo=archivo,
         id_servicio=id_servicio,
-        creado_por=admin["email"]
+        creado_por=admin.email
     )
     
     return {
