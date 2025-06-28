@@ -13,7 +13,7 @@ import pandas as pd
 from .schemas import DetalleSesionVirtualResponse, ProfesionalDetalleOut, InscritoDetalleOut
 from app.modules.users.models import Cliente, Usuario
 from app.modules.communities.models import Comunidad
-
+from io import BytesIO
 
 
 def obtener_servicios_por_ids(session: Session, servicio_ids: List[int]):
@@ -200,7 +200,7 @@ def listar_locales_por_servicio(db: Session, id_servicio: int) -> list[Local]:
 
 
 def procesar_archivo_profesionales(db: Session, archivo: UploadFile, creado_por: str):
-    df = pd.read_excel(archivo.file)
+    df = pd.read_excel(BytesIO(archivo.file.read()), engine="openpyxl")
 
     resumen = {
         "insertados": 0,
