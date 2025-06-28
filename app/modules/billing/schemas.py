@@ -109,3 +109,12 @@ class DetalleInscripcionPagoOut(BaseModel):
     hora_pago: Optional[str]
     id_pago: Optional[int]
     tarjeta: str
+
+class SuspensionEstadoOut(BaseModel):
+    id_suspension: int
+    id_cliente: int
+    id_inscripcion: int
+    motivo: str
+    fecha_inicio: str
+    fecha_fin: str
+    estado: str
