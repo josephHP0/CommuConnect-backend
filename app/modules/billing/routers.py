@@ -1,19 +1,22 @@
+from datetime import date
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id, get_current_user
-from app.modules.billing.models import DetalleInscripcion, Inscripcion, Pago, Plan
+from app.modules.billing.models import DetalleInscripcion, Inscripcion, Pago, Plan, Suspension
 from app.modules.communities.models import ComunidadXPlan
 from app.modules.users.models import Usuario
 from .services import agregar_plan_a_comunidad_serv, crear_inscripcion, crear_pago_pendiente, get_planes, obtener_planes_no_asociados, obtener_planes_por_comunidad, pagar_pendiente
-from .schemas import ComunidadXPlanCreate, DetalleInscripcionOut, DetalleInscripcionPagoOut, InscripcionResumenOut, PlanOut, InfoInscripcionOut
+from .schemas import ComunidadXPlanCreate, DetalleInscripcionOut, DetalleInscripcionPagoOut, InscripcionResumenOut, PlanOut, InfoInscripcionOut, SuspensionEstadoOut
 from typing import List, Optional
 from app.modules.billing.services import tiene_membresia_asociada
 from app.modules.billing.schemas import MembresiaAsociadaOut
 from app.modules.billing.services import tiene_membresia_activa_en_comunidad
 from app.modules.billing.schemas import ValidacionMembresiaOut
 from app.modules.billing.services import tiene_topes_disponibles
+from datetime import datetime
+from sqlalchemy import desc
 
 def nombre(self):
     raise NotImplementedError
@@ -88,7 +91,6 @@ def congelar_membresia(
     inscripcion = congelar_inscripcion(session, id_inscripcion, current_user.email)
     return {"ok": True, "message": "Inscripción congelada exitosamente", "inscripcion_id": inscripcion.id_inscripcion}
 
-# Nuevo endpoint para reactivar membresía (inscripción)
 @router.post("/inscripcion/{id_inscripcion}/reactivar")
 def reactivar_membresia(
     id_inscripcion: int,
@@ -97,8 +99,23 @@ def reactivar_membresia(
 ):
     from .services import reactivar_inscripcion
     inscripcion = reactivar_inscripcion(session, id_inscripcion, current_user.email)
-    return {"ok": True, "message": "Inscripción reactivada exitosamente", "inscripcion_id": inscripcion.id_inscripcion}
 
+    # Cambia el estado de la suspensión asociada (si existe) a 3 (completada)
+    suspension = session.exec(
+        select(Suspension)
+        .where(Suspension.id_inscripcion == id_inscripcion)
+        .where(Suspension.estado.in_([1, 2])) # type: ignore
+        .order_by(desc(Suspension.fecha_creacion)) # type: ignore
+    ).first()
+    if suspension:
+        suspension.estado = 3  # Completada
+        suspension.modificado_por = current_user.email
+        suspension.fecha_modificacion = datetime.utcnow()
+        session.add(suspension)
+        session.commit()
+        session.refresh(suspension)
+
+    return {"ok": True, "message": "Inscripción reactivada exitosamente", "inscripcion_id": inscripcion.id_inscripcion}
 #Este endpoint es útil para saber rápidamente si un cliente ya está inscrito 
 #activamente en alguna comunidad. Ideal para validar antes de mostrar contenido exclusivo,
 #planes, reservas, etc.
@@ -311,3 +328,116 @@ def ver_detalle_pago(
         id_pago=pago.id_pago if pago else None,
         tarjeta="**** 1234"
     )
+
+# Endpoint de solicitud de congelamiento de membresía
+@router.post("/inscripcion/{id_inscripcion}/solicitar-congelamiento")
+def solicitar_congelamiento_membresia(
+    id_inscripcion: int,
+    fecha_inicio: date,
+    fecha_fin: date,
+    motivo: str,
+    archivo: Optional[bytes] = None,
+    session: Session = Depends(get_session),
+    current_user=Depends(get_current_user),
+    current_cliente_id: int = Depends(get_current_cliente_id),
+):
+    suspension = Suspension(
+        id_cliente=current_cliente_id,
+        id_inscripcion=id_inscripcion,
+        motivo=motivo or "",
+        fecha_inicio=datetime.combine(fecha_inicio, datetime.min.time()),
+        fecha_fin=datetime.combine(fecha_fin, datetime.min.time()),
+        archivo= archivo,
+        fecha_creacion=datetime.utcnow(),
+        creado_por=current_user.email,
+        fecha_modificacion=None,
+        modificado_por=None,
+        estado=2  # Pendiente
+    )
+    session.add(suspension)
+    session.commit()
+    session.refresh(suspension)
+    return {"ok": True, "message": "Solicitud de congelamiento registrada y pendiente de aprobación", "id_suspension": suspension.id_suspension}
+
+
+# Endpoint para aceptar una suspensión de membresía desde el administrador
+@router.post("/suspension/{id_suspension}/aceptar")
+def aceptar_suspension(
+    id_suspension: int,
+    session: Session = Depends(get_session),
+    current_user=Depends(get_current_user)
+):
+    # Busca la suspensión
+    suspension = session.get(Suspension, id_suspension)
+    if not suspension:
+        raise HTTPException(status_code=404, detail="Suspensión no encontrada")
+
+    # Cambia el estado de la suspensión a 1 (aceptada)
+    suspension.estado = 1
+    suspension.modificado_por = current_user.email
+    suspension.fecha_modificacion = datetime.utcnow()
+    session.add(suspension)
+
+    # Cambia el estado de la inscripción a 0 (congelado)
+    inscripcion = session.get(Inscripcion, suspension.id_inscripcion)
+    if not inscripcion:
+        raise HTTPException(status_code=404, detail="Inscripción no encontrada")
+    inscripcion.estado = 0
+    inscripcion.modificado_por = current_user.email
+    inscripcion.fecha_modificacion = datetime.utcnow()
+    session.add(inscripcion)
+
+    session.commit()
+    return {"ok": True, "message": "Suspensión aceptada y membresía congelada exitosamente", "id_suspension": suspension.id_suspension}
+
+# Endpoint para rechazar una suspensión de membresía desde el administrador
+@router.post("/suspension/{id_suspension}/rechazar")
+def rechazar_suspension(
+    id_suspension: int,
+    session: Session = Depends(get_session),
+    current_user=Depends(get_current_user)
+):
+    # Busca la suspensión
+    suspension = session.get(Suspension, id_suspension)
+    if not suspension:
+        raise HTTPException(status_code=404, detail="Suspensión no encontrada")
+
+    # Cambia el estado de la suspensión a 0 (rechazada)
+    suspension.estado = 0
+    suspension.modificado_por = current_user.email
+    suspension.fecha_modificacion = datetime.utcnow()
+    session.add(suspension)
+
+    # La inscripción sigue activa (estado 1), no se modifica
+
+    session.commit()
+    return {"ok": True, "message": "Suspensión rechazada exitosamente", "id_suspension": suspension.id_suspension}
+
+# Endpoint para listar todas las suspensiones de membresía pendientes
+@router.get("/suspensiones/pendientes", response_model=List[Suspension])
+def listar_suspensiones_pendientes(
+    session: Session = Depends(get_session)
+):
+    suspensiones = session.exec(
+        select(Suspension).where(Suspension.estado == 2)
+    ).all()
+    return suspensiones
+
+@router.get("/suspensiones/todas", response_model=List[SuspensionEstadoOut])
+def listar_todas_suspensiones(
+    session: Session = Depends(get_session)
+):
+    suspensiones = session.exec(select(Suspension)).all()
+    estado_map = {0: "Rechazada", 1: "Aceptada", 2: "Pendiente", 3:"Completada"}
+    resultado = []
+    for s in suspensiones:
+        resultado.append(SuspensionEstadoOut(
+            id_suspension=s.id_suspension,
+            id_cliente=s.id_cliente,
+            id_inscripcion=s.id_inscripcion,
+            motivo=s.motivo,
+            fecha_inicio=s.fecha_inicio.isoformat() if s.fecha_inicio else "",
+            fecha_fin=s.fecha_fin.isoformat() if s.fecha_fin else "",
+            estado=estado_map.get(s.estado, "Desconocido")
+        ))
+    return resultado
