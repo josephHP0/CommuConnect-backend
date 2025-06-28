@@ -156,23 +156,16 @@ def obtener_comunidades_del_cliente(session: Session, id_cliente: int) -> List[C
     return comunidades # type: ignore
 
 
-def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int) -> bool:
+def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int) -> str:
     inscripcion = session.exec(
         select(Inscripcion).where(
             Inscripcion.id_cliente == id_cliente,
             Inscripcion.id_comunidad == id_comunidad,
-            Inscripcion.estado == 1  # solo estado activo
+            Inscripcion.estado == 1
         )
     ).first()
-    return inscripcion is not None
 
-def obtener_estado_inscripcion(session: Session, id_cliente: int, id_comunidad: int) -> Optional[int]:
-    return session.exec(
-        select(Inscripcion.estado)
-        .where(Inscripcion.id_cliente == id_cliente)
-        .where(Inscripcion.id_comunidad == id_comunidad)
-    ).first()
-
+    return "activa" if inscripcion else "inactiva"
 
 def construir_respuesta_contexto(
     session: Session,
@@ -185,20 +178,18 @@ def construir_respuesta_contexto(
         print(f"Procesando comunidad ID {comunidad.id_comunidad}: {comunidad.nombre}")
 
         try:
-            servicios = obtener_servicios_de_comunidad(session, comunidad.id_comunidad)  # type: ignore
-            servicios_resumen = [
-                ServicioResumen(nombre=s.nombre, modalidad=s.modalidad)
-                for s in servicios
-            ]
+            servicios = obtener_servicios_de_comunidad(session, comunidad.id_comunidad) # type: ignore
+            print(f"Servicios obtenidos para '{comunidad.nombre}': {[s.nombre for s in servicios]}")
 
-            estado_membresia = tiene_membresia_activa(session, id_cliente, comunidad.id_comunidad)
-            estado_inscripcion = obtener_estado_inscripcion(session, id_cliente, comunidad.id_comunidad)
+            servicios_resumen = [ServicioResumen(nombre=s.nombre,modalidad=s.modalidad) for s in servicios]
+
+            # 🔹 Determinar el estado de membresía individualmente
+            estado = tiene_membresia_activa(session, id_cliente, comunidad.id_comunidad) # type: ignore
 
             comunidad_contexto = ComunidadContexto.from_orm_with_base64(
                 comunidad=comunidad,
                 servicios=servicios_resumen,
-                estado_membresia=estado_membresia,
-                estado_inscripcion=estado_inscripcion
+                estado_membresia=estado
             )
             respuesta.append(comunidad_contexto)
 
