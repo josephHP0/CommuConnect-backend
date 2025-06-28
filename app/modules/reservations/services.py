@@ -25,7 +25,7 @@ from app.modules.reservations.schemas import SesionCargaMasiva
 from pydantic import ValidationError
 
 from datetime import datetime, timezone
-
+from io import BytesIO
 
 
 
@@ -936,7 +936,7 @@ def verificar_cruce_de_reservas(db: Session, id_cliente: int, id_comunidad: int,
 
 def procesar_archivo_sesiones(db: Session, archivo, creado_por: str):
 
-    df = pd.read_excel(archivo.file)
+    df = pd.read_excel(BytesIO(archivo.file.read()), engine="openpyxl")
 
     # ✅ Línea clave: reemplaza todos los NaN por None
     df = df.replace({np.nan: None})
