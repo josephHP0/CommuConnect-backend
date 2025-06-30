@@ -19,7 +19,8 @@ from app.modules.services.models import ComunidadXServicio, Local, Profesional, 
 from app.modules.users.models import Cliente, Usuario
 from utils.datetime_utils import convert_local_to_utc, convert_utc_to_local
 from utils.email_brevo import send_form_email, send_reservation_email
-
+from app.modules.billing.models import Inscripcion, Plan
+from typing import Tuple, Optional
 def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_comunidad: int, fecha: date):
     end_date = fecha + timedelta(days=7)
 
@@ -420,80 +421,148 @@ def obtener_url_archivo_virtual(session: Session, id_sesion: int) -> str | None:
     ).first()
     return sv.url_archivo if sv else None
 
-def reservar_sesion_virtual(
+
+def crear_reserva_virtual_con_validaciones(
     session: Session,
     id_sesion: int,
     cliente_id: int,
     usuario_id: int,
     id_comunidad: int
 ) -> Reserva:
-    """
-    Servicio que bloquea la fila de Sesion, valida unicidad solo en Virtual,
-    y crea la reserva, todo dentro de un SAVEPOINT (begin_nested).
-    """
-    try:
-        # 1) Savepoint en lugar de nueva transacción
+    # aquí abrimos la transacción exterior
+    with session.begin():
+        # bloque para el SAVEPOINT
         with session.begin_nested():
-            # SELECT FOR UPDATE bajo ese SAVEPOINT
-            sesion = session.exec(
-                select(Sesion)
-                  .where(Sesion.id_sesion == id_sesion)
-                  .with_for_update()
-            ).one_or_none()
-            if not sesion:
-                raise HTTPException(status_code=404, detail="Sesión no encontrada.")
-
-            # Solo para Virtual: validar que no haya reserva activa
-            if sesion.tipo == "Virtual":
-                existe = session.exec(
-                    select(Reserva)
-                    .where(
-                        Reserva.id_sesion == id_sesion,
-                        Reserva.estado_reserva.in_(["confirmada", "formulario_pendiente"])
-                    )
-                    .with_for_update()
-                ).first()
-                if existe:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="Ya existe una reserva activa para esta sesión virtual."
-                    )
-
-            # Validación de conflictos horario
+            sesion = obtener_sesion_bloqueada(session, id_sesion)
+            validar_unicidad_virtual(session, sesion)
             validar_cliente_sin_conflicto(session, cliente_id, sesion, id_comunidad)
 
-            # Crear la reserva dentro del mismo SAVEPOINT
-            nueva_reserva = Reserva(
-                id_sesion      = id_sesion,
-                id_cliente     = cliente_id,
-                id_comunidad    = id_comunidad, 
-                estado_reserva = "formulario_pendiente",
-                fecha_reservada=sesion.inicio,
-                creado_por=usuario_id,
-                fecha_creacion = datetime.now(timezone.utc)
+            inscripcion = obtener_inscripcion_activa(session, cliente_id, id_comunidad)
+            plan = session.exec(
+                select(Plan).where(Plan.id_plan == inscripcion.id_plan)
+            ).one_or_none()
+            if not plan:
+                raise HTTPException(500, "El plan asociado a la inscripción no existe.")
+
+            detalle = None
+            if es_plan_con_topes(plan):
+                detalle = obtener_detalle_topes_bloqueado(session, inscripcion.id_inscripcion)
+                validar_topes_disponibles(detalle)
+
+        # fuera del SAVEPOINT, pero dentro de la transacción padre:
+        reserva = crear_reserva(
+            session=session,
+            sesion=sesion,
+            cliente_id=cliente_id,
+            comunidad_id=id_comunidad,
+            usuario_id=usuario_id
+        )
+
+        if detalle:
+            # descontamos los topes en la entidad
+            detalle.topes_disponibles  -= 1
+            detalle.topes_consumidos   += 1
+            session.add(detalle)         # asegurar que SQLModel lo rastrea
+            session.flush()             # enviar UPDATE al motor
+
+        # al salir del `with session.begin():` se ejecuta el COMMIT
+        return reserva
+
+def obtener_sesion_bloqueada(session: Session, id_sesion: int) -> Sesion:
+    sesion = session.exec(
+        select(Sesion).where(Sesion.id_sesion == id_sesion).with_for_update()
+    ).one_or_none()
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada.")
+    return sesion
+
+
+def validar_unicidad_virtual(session: Session, sesion: Sesion):
+    if sesion.tipo == "Virtual":
+        existe = session.exec(
+            select(Reserva)
+            .where(
+                Reserva.id_sesion == sesion.id_sesion,
+                Reserva.estado_reserva.in_(["confirmada", "formulario_pendiente"])
+            ).with_for_update()
+        ).first()
+        if existe:
+            raise HTTPException(
+                status_code=409,
+                detail="Ya existe una reserva activa para esta sesión virtual."
             )
-            session.add(nueva_reserva)
-            session.flush()
 
-        # 2) Al salir del begin_nested() hacemos release savepoint, pero la tx sigue abierta.
-        # 3) Aquí no hay más excepciones: FastAPI/tu router hará el commit final.
-        return nueva_reserva
 
-    except HTTPException as e:
-        raise
+def obtener_inscripcion_activa(session: Session, cliente_id: int, comunidad_id: int) -> Inscripcion:
+    inscripcion = session.exec(
+        select(Inscripcion)
+        .where(
+            Inscripcion.id_cliente == cliente_id,
+            Inscripcion.id_comunidad == comunidad_id,
+            Inscripcion.estado == 1
+        )
+    ).one_or_none()
+    if not inscripcion:
+        raise HTTPException(
+            status_code=403,
+            detail="No tienes una inscripción activa en esta comunidad."
+        )
+    return inscripcion
 
-    except IntegrityError as e:
-        session.rollback()
+
+def es_plan_con_topes(plan: Plan) -> bool:
+    return getattr(plan, "tiene_topes", False) or getattr(plan, "topes_maximos", None) is not None
+
+
+def obtener_detalle_topes_bloqueado(session: Session, id_inscripcion: int) -> DetalleInscripcion:
+    detalle = session.exec(
+        select(DetalleInscripcion)
+        .where(DetalleInscripcion.id_inscripcion == id_inscripcion)
+        .with_for_update()
+    ).one_or_none()
+    if not detalle:
+        raise HTTPException(
+            status_code=500,
+            detail="No se encontró el detalle de inscripción para topes."
+        )
+    return detalle
+
+
+def validar_topes_disponibles(detalle: DetalleInscripcion):
+    if detalle.topes_disponibles <= 0:
         raise HTTPException(
             status_code=409,
-            detail=f"Error de integridad al crear la reserva: {e.orig}"
+            detail="No tienes topes disponibles para realizar esta reserva."
         )
 
-    except Exception as e:
-        session.rollback()
-        raise HTTPException(
-            status_code=500, detail=f"Error interno al crear la reserva: {e}"
-        )
+
+def descontar_topes(detalle: DetalleInscripcion):
+    detalle.topes_disponibles -= 1
+    detalle.topes_consumidos += 1
+
+
+def crear_reserva(
+    session: Session,
+    sesion: Sesion,
+    cliente_id: int,
+    comunidad_id: int,
+    usuario_id: int
+) -> Reserva:
+    reserva = Reserva(
+        id_sesion       = sesion.id_sesion,
+        id_cliente      = cliente_id,
+        id_comunidad    = comunidad_id,
+        estado_reserva  = "formulario_pendiente",
+        fecha_reservada = sesion.inicio,
+        creado_por      = str(usuario_id),
+        fecha_creacion  = datetime.now(timezone.utc)
+    )
+    session.add(reserva)
+    session.flush()
+    return reserva
+
+
+
     
 def obtener_resumen_reserva_presencial(db: Session, id_sesion: int, id_usuario: int):
     # 1. Obtener datos del usuario
@@ -920,3 +989,61 @@ def verificar_cruce_de_reservas(db: Session, id_cliente: int, id_comunidad: int,
     ).first()
 
     return reservas_existentes is not None
+
+
+def obtener_resumen_reserva_virtual(
+    db: Session, id_reserva: int, id_usuario: int
+) -> Tuple[Optional[dict], Optional[str]]:
+    # 1. Buscar la reserva
+    reserva = db.get(Reserva, id_reserva)
+    if not reserva:
+        return None, "Reserva no encontrada"
+    
+    # 2. Verificar que le pertenece al usuario
+    cliente = db.get(Cliente, reserva.id_cliente)
+    if not cliente or cliente.id_usuario != id_usuario:
+        return None, "No autorizado para ver esta reserva"
+
+    # 3. Obtener los datos del usuario (nombre y apellido)
+    usuario = db.get(Usuario, cliente.id_usuario)
+    if not usuario:
+        return None, "No se encontró el usuario asociado"
+
+    # 4. Obtener datos de la sesión y recurso virtual
+    stmt = (
+        select(
+            Servicio.nombre,
+            Sesion.inicio,
+            Sesion.fin,
+            SesionVirtual.url_archivo
+        )
+        .join(Servicio, Sesion.id_servicio == Servicio.id_servicio)
+        .join(SesionVirtual, Sesion.id_sesion == SesionVirtual.id_sesion)
+        .where(Sesion.id_sesion == reserva.id_sesion)
+    )
+    result = db.exec(stmt).first()
+
+    if not result:
+        return None, "Sesión virtual no encontrada"
+
+    nombre_servicio, inicio, fin, url_archivo = result
+
+    local_inicio = convert_utc_to_local(inicio)
+    local_fin = convert_utc_to_local(fin)
+
+    resumen = {
+        "id_sesion": reserva.id_sesion,
+        "fecha": local_inicio.date(),
+        "hora_inicio": local_inicio.strftime("%H:%M"),
+        "hora_fin": local_fin.strftime("%H:%M"),
+        "link_formulario": url_archivo or "",
+        "nombres": usuario.nombre,
+        "apellidos": usuario.apellido,
+        "mensaje_exito": "Reserva realizada con éxito.",
+        "nota": (
+            "Puede llenar este link más tarde desde la sección 'mis reservas', "
+            "pero debe completarlo para que el profesional pueda atenderlo."
+        )
+    }
+
+    return resumen, None

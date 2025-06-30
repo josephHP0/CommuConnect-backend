@@ -162,6 +162,9 @@ def obtener_locales_por_servicio(id_servicio: int, db: Session = Depends(get_ses
         raise HTTPException(status_code=404, detail="No se encontraron locales para este servicio")
     return locales
 
+
+
+
 @router.post("/locales-carga-masiva/{id_servicio}")
 def carga_masiva_locales(
     id_servicio: int,

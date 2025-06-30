@@ -142,3 +142,18 @@ class ReservaDetailScreenResponse(BaseModel):
             time: lambda v: v.strftime('%H:%M') if v else None,
         }
     )
+
+
+class ReservaVirtualSummary(BaseModel):
+    id_sesion: int
+    fecha: date
+    hora_inicio: str
+    hora_fin: str
+    link_formulario: str
+    nombres: str
+    apellidos: str
+    mensaje_exito: str = "Reserva realizada con éxito."
+    nota: str = (
+        "Puede llenar este link más tarde desde la sección 'mis reservas', "
+        "pero debe completarlo para que el profesional pueda atenderlo."
+    )
