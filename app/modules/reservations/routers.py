@@ -28,6 +28,8 @@ from app.modules.billing.services import obtener_inscripcion_activa, es_plan_con
 from utils.datetime_utils import convert_utc_to_local
 from app.modules.users.services import obtener_cliente_desde_usuario
 from app.modules.services.models import Profesional
+from app.modules.reservations.services import procesar_archivo_sesiones
+from app.modules.users.dependencies import get_current_admin
 from app.modules.reservations.services import crear_reserva_virtual_con_validaciones
 from app.modules.reservations.services import obtener_resumen_reserva_virtual
 from app.modules.reservations.schemas import ReservaVirtualSummary
@@ -427,6 +429,21 @@ async def enviar_formulario(
         profesional_nombre=profesional.nombre_completo,
         cliente_nombre=cliente_nombre
     )
+
+
+
+@router.post("/sesiones/carga-masiva")
+def carga_masiva_sesiones(
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_session),
+    current_admin: Usuario = Depends(get_current_admin)
+):
+    try:
+        resultado = procesar_archivo_sesiones(db, archivo, current_admin.email)
+        return {"mensaje": "Carga masiva completada", "resumen": resultado}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get(
     "/virtual/summary/reserva/{id_reserva}",

@@ -22,7 +22,7 @@ class ComunidadRead(BaseModel):
     creado_por: Optional[str] = None
     fecha_modificacion: Optional[datetime] = None
     modificado_por: Optional[str] = None
-    estado: bool 
+    estado: int 
 
     @validator('fecha_creacion', 'fecha_modificacion', pre=True, always=True)
     def localize_dates(cls, v):
@@ -58,27 +58,27 @@ class ComunidadOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class ComunidadContexto(BaseModel):
     id_comunidad: int
     nombre: str
     slogan: Optional[str] = None
     imagen: Optional[str] = None  # Codificada en base64 para frontend
     servicios: Optional[List[ServicioResumen]] = [] 
-    estado_membresia: Optional[bool] = None  # True si tiene membresía activa
-    estado_inscripcion: Optional[int] = None  # 1 = activo, 0 = inactivo, None = no inscrito
+    estado_membresia: Optional[str] = None  # 'activa' o 'inactiva'
 
     model_config = ConfigDict(from_attributes=True)
 
     @classmethod
-    def from_orm_with_base64(cls, comunidad, servicios=None, estado_membresia=None, estado_inscripcion=None):
+    def from_orm_with_base64(cls, comunidad, servicios=None, estado_membresia=None):
         data = comunidad.__dict__.copy()
         if comunidad.imagen:
             data["imagen"] = base64.b64encode(comunidad.imagen).decode("utf-8")
         if servicios is not None:
             data["servicios"] = servicios
-        data["estado_membresia"] = estado_membresia
-        data["estado_inscripcion"] = estado_inscripcion
+        data["estado_membresia"] = estado_membresia or "inactiva"
         return cls(**data)
+
 
 class ComunidadDetalleOut(BaseModel):
     id_comunidad: int
