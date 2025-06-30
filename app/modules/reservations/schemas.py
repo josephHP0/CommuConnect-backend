@@ -1,7 +1,6 @@
 from typing import List, Optional
 from datetime import date, time, datetime
 from pydantic import BaseModel, ConfigDict,model_validator
-from app.modules.reservations.models   import Sesion, Reserva, SesionVirtual
 
 
 class FechasPresencialesResponse(BaseModel):
@@ -143,35 +142,6 @@ class ReservaDetailScreenResponse(BaseModel):
         }
     )
 
-class SesionCargaMasiva(BaseModel):
-    id_servicio: int
-    modalidad: str  # 'Virtual' o 'Presencial'
-    fecha_inicio: datetime
-
-    # Solo si modalidad es Presencial
-    id_local: Optional[int] = None
-    capacidad: Optional[int] = None
-
-    # Solo si modalidad es Virtual
-    id_profesional: Optional[int] = None
-    url_meeting: Optional[str] = None
-    url_archivo: Optional[str] = None   
-
-    @model_validator(mode="before")
-    @classmethod
-    def validar_datos_por_modalidad(cls, values):
-        modalidad = values.get('modalidad', '').lower()
-
-        if modalidad == 'presencial':
-            if not values.get('id_local') or not values.get('capacidad'):
-                raise ValueError("Faltan datos para sesión presencial: se requiere 'id_local' y 'capacidad'")
-        elif modalidad == 'virtual':
-            if not values.get('id_profesional') or not values.get('url_meeting'):
-                raise ValueError("Faltan datos para sesión virtual: se requiere 'id_profesional' y 'url_meeting'")
-        else:
-            raise ValueError("Modalidad inválida: debe ser 'Presencial' o 'Virtual'")
-
-        return values
 
 class ReservaVirtualSummary(BaseModel):
     id_sesion: int
@@ -189,33 +159,12 @@ class ReservaVirtualSummary(BaseModel):
 
 class SesionCargaMasiva(BaseModel):
     id_servicio: int
-    modalidad: str  # 'Virtual' o 'Presencial'
+    id_profesional: int
+    descripcion: str | None = None
     fecha_inicio: datetime
-
-    # Solo si modalidad es Presencial
-    id_local: Optional[int] = None
-    capacidad: Optional[int] = None
-
-    # Solo si modalidad es Virtual
-    id_profesional: Optional[int] = None
-    url_meeting: Optional[str] = None
-    url_archivo: Optional[str] = None   
-
-    @model_validator(mode="before")
-    @classmethod
-    def validar_datos_por_modalidad(cls, values):
-        modalidad = values.get('modalidad', '').lower()
-
-        if modalidad == 'presencial':
-            if not values.get('id_local') or not values.get('capacidad'):
-                raise ValueError("Faltan datos para sesión presencial: se requiere 'id_local' y 'capacidad'")
-        elif modalidad == 'virtual':
-            if not values.get('id_profesional') or not values.get('url_meeting'):
-                raise ValueError("Faltan datos para sesión virtual: se requiere 'id_profesional' y 'url_meeting'")
-        else:
-            raise ValueError("Modalidad inválida: debe ser 'Presencial' o 'Virtual'")
-
-        return values
+    fecha_fin: datetime
+    url_meeting: str
+    url_archivo: str
 
 class ReservaVirtualSummary(BaseModel):
     id_sesion: int

@@ -30,6 +30,8 @@ from io import BytesIO
 
 from app.modules.billing.models import Inscripcion, Plan
 from typing import Tuple, Optional
+
+
 def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_comunidad: int, fecha: date):
     end_date = fecha + timedelta(days=7)
 
@@ -1001,105 +1003,84 @@ def verificar_cruce_de_reservas(db: Session, id_cliente: int, id_comunidad: int,
 
 
 
-
-
-def procesar_archivo_sesiones(db: Session, archivo, creado_por: str):
-
+def procesar_archivo_sesiones_virtuales(db: Session, archivo, creado_por: str):
     df = pd.read_excel(BytesIO(archivo.file.read()), engine="openpyxl")
-
-    # ✅ Línea clave: reemplaza todos los NaN por None
     df = df.replace({np.nan: None})
 
     resumen = {
         "insertados": 0,
-        "omitidos": 0,
         "errores": []
     }
 
     for idx, fila in df.iterrows():
         try:
             datos = SesionCargaMasiva.model_validate(fila.to_dict())
-            resultado = procesar_fila_sesion(datos, db, creado_por)
-            if resultado == "omitido":
-                resumen["omitidos"] += 1
-            else:
-                resumen["insertados"] += 1
+            procesar_fila_sesion_virtual(datos, db, creado_por)
+            resumen["insertados"] += 1
         except ValidationError as ve:
-            resumen["errores"].append(f"Fila {idx + 2}: Error de validación: {ve}")
+            resumen["errores"].append(f"Fila {idx + 2}: Error de validación - {ve}")
         except Exception as e:
             db.rollback()
             resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")
 
     return resumen
 
-def procesar_fila_sesion(datos: SesionCargaMasiva, db: Session, creado_por: str) -> str:
-    validar_servicio_existente(datos.id_servicio, datos.modalidad, db)
-    nueva_sesion = crear_sesion_base(datos, creado_por, db)
 
-    if datos.modalidad.lower() == "presencial":
-        procesar_presencial(datos, nueva_sesion.id_sesion, db, creado_por)
-    elif datos.modalidad.lower() == "virtual":
-        procesar_virtual(datos, nueva_sesion.id_sesion, db, creado_por)
-    else:
-        raise ValueError("Modalidad inválida. Debe ser 'Presencial' o 'Virtual'")
+def procesar_fila_sesion_virtual(datos: SesionCargaMasiva, db: Session, creado_por: str):
+    ahora = datetime.now(timezone.utc)
 
-    db.commit()
-    return "insertado"
-
-def validar_servicio_existente(id_servicio: int, modalidad: str, db: Session):
-    servicio = db.exec(select(Servicio).where(Servicio.id_servicio == id_servicio)).first()
-    if not servicio:
-        raise ValueError(f"Servicio {id_servicio} no existe")
-    if servicio.modalidad.lower() != modalidad.lower():
-        raise ValueError(f"Modalidad no coincide con el servicio (esperado: {servicio.modalidad})")
-    return servicio
-
-def validar_servicio_en_comunidad(id_servicio: int, id_comunidad: int, db: Session):
-    existe = db.exec(
-        select(ComunidadXServicio).where(
-            (ComunidadXServicio.id_servicio == id_servicio) &
-            (ComunidadXServicio.id_comunidad == id_comunidad)
+    # ✅ Normalizar fechas para evitar errores de comparación
+    if datos.fecha_inicio.tzinfo is None:
+        datos.fecha_inicio = datos.fecha_inicio.replace(tzinfo=timezone.utc)
+    if datos.fecha_fin.tzinfo is None:
+        datos.fecha_fin = datos.fecha_fin.replace(tzinfo=timezone.utc)
+        
+    if datos.fecha_inicio < ahora:
+        raise ValueError(
+            f"No se puede crear una sesión en el pasado: {datos.fecha_inicio}"
         )
-    ).first()
-    if not existe:
-        raise ValueError(f"El servicio {id_servicio} no está habilitado para la comunidad {id_comunidad}")
 
-def crear_sesion_base(datos: SesionCargaMasiva, creado_por: str, db: Session):
+    if datos.fecha_inicio >= datos.fecha_fin:
+        raise ValueError(
+            f"La fecha de inicio debe ser anterior a la fecha de fin."
+        )
+
+    # Validar servicio virtual
+    servicio = db.exec(
+        select(Servicio).where(Servicio.id_servicio == datos.id_servicio)
+    ).first()
+    if not servicio:
+        raise ValueError(f"Servicio con ID {datos.id_servicio} no existe.")
+    if servicio.modalidad.lower() != "virtual":
+        raise ValueError(f"El servicio {datos.id_servicio} no es de modalidad virtual.")
+
+    # Validar profesional
+    profesional = db.exec(
+        select(Profesional).where(Profesional.id_profesional == datos.id_profesional)
+    ).first()
+    if not profesional:
+        raise ValueError(f"Profesional con ID {datos.id_profesional} no existe.")
+
+    # Validaciones de conflicto lógico
+    validar_sesion_duplicada(db, datos)
+    validar_sesion_solapada(db, datos)
+
+    # Si todo está bien, ahora sí se crea la sesión
     nueva_sesion = Sesion(
         id_servicio=datos.id_servicio,
-        tipo=datos.modalidad.capitalize(),
-        descripcion=f"Sesión de servicio {datos.id_servicio}",  # Si usas un campo `descripcion`
+        tipo="Virtual",
+        descripcion=datos.descripcion or f"Sesión virtual de servicio {datos.id_servicio}",
         inicio=datos.fecha_inicio,
+        fin=datos.fecha_fin,
         creado_por=creado_por,
         fecha_creacion=datetime.now(timezone.utc),
         estado=1
     )
     db.add(nueva_sesion)
-    db.flush()
-    return nueva_sesion
+    db.flush()  # Ahora sí, porque ya validamos todo
 
-def procesar_presencial(datos: SesionCargaMasiva, id_sesion: int, db: Session, creado_por: str):
-    local = db.exec(select(Local).where(Local.id_local == datos.id_local)).first()
-    if not local:
-        raise ValueError(f"Local {datos.id_local} no existe")
-
-    nueva = SesionPresencial(
-        id_sesion=id_sesion,
-        id_local=datos.id_local,
-        capacidad=datos.capacidad,
-        creado_por=creado_por,
-        fecha_creacion=datetime.now(timezone.utc),
-        estado=1
-    )
-    db.add(nueva)
-
-def procesar_virtual(datos: SesionCargaMasiva, id_sesion: int, db: Session, creado_por: str):
-    profesional = db.exec(select(Profesional).where(Profesional.id_profesional == datos.id_profesional)).first()
-    if not profesional:
-        raise ValueError(f"Profesional {datos.id_profesional} no existe")
-
-    nueva = SesionVirtual(
-        id_sesion=id_sesion,
+    nueva_virtual = SesionVirtual(
+        id_sesion=nueva_sesion.id_sesion,
         id_profesional=datos.id_profesional,
         url_meeting=datos.url_meeting,
         url_archivo=datos.url_archivo,
@@ -1107,7 +1088,47 @@ def procesar_virtual(datos: SesionCargaMasiva, id_sesion: int, db: Session, crea
         fecha_creacion=datetime.now(timezone.utc),
         estado=1
     )
-    db.add(nueva)
+    db.add(nueva_virtual)
+    db.commit()
+
+
+def validar_sesion_duplicada(db: Session, datos: SesionCargaMasiva):
+    existe = db.exec(
+        select(Sesion)
+        .join(SesionVirtual, Sesion.id_sesion == SesionVirtual.id_sesion)
+        .where(
+            Sesion.id_servicio == datos.id_servicio,
+            Sesion.inicio == datos.fecha_inicio,
+            SesionVirtual.id_profesional == datos.id_profesional
+        )
+    ).first()
+
+    if existe:
+        raise ValueError(
+            f"Ya existe una sesión virtual programada para el servicio {datos.id_servicio}, "
+            f"con el profesional {datos.id_profesional} exactamente a las {datos.fecha_inicio}."
+        )
+
+
+def validar_sesion_solapada(db: Session, datos: SesionCargaMasiva):
+    solapada = db.exec(
+        select(Sesion)
+        .join(SesionVirtual, Sesion.id_sesion == SesionVirtual.id_sesion)
+        .where(
+            SesionVirtual.id_profesional == datos.id_profesional,
+            Sesion.id_servicio == datos.id_servicio,
+            Sesion.inicio < datos.fecha_fin,
+            Sesion.fin > datos.fecha_inicio
+        )
+    ).first()
+
+    if solapada:
+        raise ValueError(
+            f"El profesional {datos.id_profesional} ya tiene una sesión que se cruza entre "
+            f"{datos.fecha_inicio} y {datos.fecha_fin} para el mismo servicio {datos.id_servicio}."
+        )
+
+
 
 
 def obtener_resumen_reserva_virtual(
