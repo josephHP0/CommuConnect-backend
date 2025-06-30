@@ -169,6 +169,9 @@ def obtener_locales_por_servicio(id_servicio: int, db: Session = Depends(get_ses
 
 
 
+
+
+
 @router.get("/admin/comunidad/{id_comunidad}/servicios", response_model=List[ServicioOut])
 def listar_servicios_por_comunidad_admin(
     id_comunidad: int,

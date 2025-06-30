@@ -172,3 +172,61 @@ class SesionCargaMasiva(BaseModel):
             raise ValueError("Modalidad inválida: debe ser 'Presencial' o 'Virtual'")
 
         return values
+
+class ReservaVirtualSummary(BaseModel):
+    id_sesion: int
+    fecha: date
+    hora_inicio: str
+    hora_fin: str
+    link_formulario: str
+    nombres: str
+    apellidos: str
+    mensaje_exito: str = "Reserva realizada con éxito."
+    nota: str = (
+        "Puede llenar este link más tarde desde la sección 'mis reservas', "
+        "pero debe completarlo para que el profesional pueda atenderlo."
+    )
+
+class SesionCargaMasiva(BaseModel):
+    id_servicio: int
+    modalidad: str  # 'Virtual' o 'Presencial'
+    fecha_inicio: datetime
+
+    # Solo si modalidad es Presencial
+    id_local: Optional[int] = None
+    capacidad: Optional[int] = None
+
+    # Solo si modalidad es Virtual
+    id_profesional: Optional[int] = None
+    url_meeting: Optional[str] = None
+    url_archivo: Optional[str] = None   
+
+    @model_validator(mode="before")
+    @classmethod
+    def validar_datos_por_modalidad(cls, values):
+        modalidad = values.get('modalidad', '').lower()
+
+        if modalidad == 'presencial':
+            if not values.get('id_local') or not values.get('capacidad'):
+                raise ValueError("Faltan datos para sesión presencial: se requiere 'id_local' y 'capacidad'")
+        elif modalidad == 'virtual':
+            if not values.get('id_profesional') or not values.get('url_meeting'):
+                raise ValueError("Faltan datos para sesión virtual: se requiere 'id_profesional' y 'url_meeting'")
+        else:
+            raise ValueError("Modalidad inválida: debe ser 'Presencial' o 'Virtual'")
+
+        return values
+
+class ReservaVirtualSummary(BaseModel):
+    id_sesion: int
+    fecha: date
+    hora_inicio: str
+    hora_fin: str
+    link_formulario: str
+    nombres: str
+    apellidos: str
+    mensaje_exito: str = "Reserva realizada con éxito."
+    nota: str = (
+        "Puede llenar este link más tarde desde la sección 'mis reservas', "
+        "pero debe completarlo para que el profesional pueda atenderlo."
+    )
