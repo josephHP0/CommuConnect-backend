@@ -7,21 +7,16 @@ class PlanOut(BaseModel):
     id_plan: int
     titulo: str
     descripcion: str
-    topes: Union[int, str]
+    topes: Optional[Union[int, str]] = None
     precio: float
     duracion: Optional[int]
 
-    @property
-    def topes_display(self):
-        return "ilimitado" if isinstance(self.topes, int) and self.topes > 100 else self.topes
+    @validator("topes", pre=True, always=True)
+    def mostrar_ilimitado_si_none(cls, v):
+        return "ilimitado" if v is None else v
 
     class Config:
-        from_attributes = True  # <--- Cambia esto
-
-    def dict(self, *args, **kwargs):
-        data = super().dict(*args, **kwargs)
-        data["topes"] = self.topes_display
-        return data
+        from_attributes = True
 
 
 class UsoTopesOut(BaseModel):
