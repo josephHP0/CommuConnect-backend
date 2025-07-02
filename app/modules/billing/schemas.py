@@ -30,7 +30,7 @@ class DetalleInscripcionBase(BaseModel):
     fecha_registro: datetime
     fecha_inicio: datetime
     fecha_fin: Optional[datetime] = None
-    topes_disponibles: int
+    topes_disponibles: Optional[int] = None
     topes_consumidos: int
     estado: int
 

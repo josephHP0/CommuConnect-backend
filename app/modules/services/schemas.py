@@ -42,7 +42,7 @@ class DistritoOut(BaseModel):
     nombre: str
     imagen: Optional[str] = None  # base64
 
-class LocalOut(BaseModel):
+class LocalOut(BaseModel): # type: ignore
     id_local: int
     nombre: Optional[str]
     direccion_detallada: Optional[str]
@@ -136,3 +136,12 @@ class DetalleSesionVirtualResponse(BaseModel):
     hora_fin: Optional[time]
     profesional: ProfesionalDetalleOut
     inscritos: List[InscritoDetalleOut]
+
+class LocalCreate(BaseModel):
+    id_departamento: int
+    id_distrito: int
+    id_servicio: Optional[int] = None
+    direccion_detallada: Optional[str] = None
+    responsable: Optional[str] = None
+    nombre: Optional[str] = None
+    link: Optional[str] = None

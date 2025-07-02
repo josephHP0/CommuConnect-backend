@@ -24,7 +24,7 @@ class Servicio(SQLModel, table=True):
     profesionales: List["Profesional"] = Relationship(back_populates="servicio")
 
 class Local(SQLModel, table=True):
-    __tablename__ = "local"
+    __tablename__ = "local" # type: ignore
     id_local: Optional[int] = Field(default=None, primary_key=True)
     id_departamento: int = Field(foreign_key="departamento.id_departamento")
     id_distrito: int = Field(foreign_key="distrito.id_distrito")
@@ -44,7 +44,7 @@ class Local(SQLModel, table=True):
     servicio: Optional["Servicio"] = Relationship(back_populates="locales")
 
 class Profesional(SQLModel, table=True):
-    __tablename__ = "profesional"
+    __tablename__ = "profesional" # type: ignore
 
     id_profesional: Optional[int] = Field(default=None, primary_key=True)
     nombre_completo: Optional[str] = Field(default=None, max_length=200)

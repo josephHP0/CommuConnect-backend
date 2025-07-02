@@ -10,7 +10,7 @@ from app.modules.services.schemas import DistritoOut, ServicioCreate, ServicioRe
 import base64
 from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut, SesionVirtualConDetalle
 import pandas as pd
-from .schemas import DetalleSesionVirtualResponse, ProfesionalDetalleOut, InscritoDetalleOut
+from .schemas import DetalleSesionVirtualResponse, LocalCreate, ProfesionalDetalleOut, InscritoDetalleOut
 from app.modules.users.models import Cliente, Usuario
 from app.modules.communities.models import Comunidad
 from io import BytesIO
@@ -350,3 +350,25 @@ def listar_inscritos_de_sesion(id_sesion: int, db: Session) -> List[InscritoDeta
         ))
 
     return inscritos
+
+def crear_local(
+    db: Session,
+    data: "LocalCreate",
+    creado_por: str
+) -> Local:
+    local = Local(
+        id_departamento=data.id_departamento,
+        id_distrito=data.id_distrito,
+        id_servicio=data.id_servicio,
+        direccion_detallada=data.direccion_detallada,
+        responsable=data.responsable,
+        nombre=data.nombre,
+        link=data.link,
+        fecha_creacion=datetime.utcnow(),
+        creado_por=creado_por,
+        estado=1
+    )
+    db.add(local)
+    db.commit()
+    db.refresh(local)
+    return local
