@@ -19,7 +19,7 @@ from app.modules.reservations.schemas import FormularioInfoResponse
 from app.modules.services.models import ComunidadXServicio, Local, Profesional, Servicio
 from app.modules.users.models import Cliente, Usuario
 from utils.datetime_utils import convert_local_to_utc, convert_utc_to_local
-from utils.email_brevo import send_form_email, send_reservation_email
+from utils.email_brevo import send_form_email, send_reservation_cancel_email, send_reservation_email
 
 from app.modules.reservations.schemas import SesionCargaMasiva
 from pydantic import ValidationError
@@ -976,6 +976,20 @@ def cancelar_reserva_por_id(db: Session, id_reserva: int, id_usuario: int):
     db.add(reserva)
     db.commit()
     db.refresh(reserva)
+
+    # Obtener datos del usuario y servicio
+    usuario = db.get(Usuario, id_usuario)
+    sesion = db.get(Sesion, reserva.id_sesion)
+    servicio = db.get(Servicio, sesion.id_servicio) if sesion else None
+
+    # Enviar correo de cancelación
+    if usuario and servicio:
+        details = {
+            "nombre_cliente": usuario.nombre,
+            "nombre_servicio": servicio.nombre,
+            "fecha": sesion.inicio.strftime("%Y-%m-%d") if sesion else "", # type: ignore
+        }
+        send_reservation_cancel_email(usuario.email, details)
     
     return {"message": "Reserva cancelada exitosamente."}
 
