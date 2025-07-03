@@ -38,8 +38,8 @@ def send_reservation_email(to_email: str, details: dict) -> None:
             </p>
         """
 
-    hora_inicio_str = details.get('hora_inicio').strftime('%H:%M') if details.get('hora_inicio') else 'N/A'
-    hora_fin_str = details.get('hora_fin').strftime('%H:%M') if details.get('hora_fin') else 'N/A'
+    hora_inicio_str = details.get('hora_inicio').strftime('%H:%M') if details.get('hora_inicio') else 'N/A' # type: ignore
+    hora_fin_str = details.get('hora_fin').strftime('%H:%M') if details.get('hora_fin') else 'N/A' # type: ignore
 
     html = f"""
         <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
@@ -107,5 +107,24 @@ def send_form_email(to_email: str, file_content: bytes, filename: str, details: 
         attachment=[
             {"content": attachment_content, "name": filename}
         ]
+    )
+    _api.send_transac_email(email)
+
+def send_reservation_cancel_email(to_email: str, details: dict) -> None:
+    html = f"""
+        <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px; border-radius: 8px;">
+            <h2 style="color: #e53e3e;">Reserva Cancelada</h2>
+            <p>Hola {details.get('nombre_cliente', '')},</p>
+            <p>Te informamos que tu reserva para el servicio <strong>{details.get('nombre_servicio', 'N/A')}</strong> el día <strong>{details.get('fecha', 'N/A')}</strong> ha sido <strong>cancelada exitosamente</strong>.</p>
+            <p>Si tienes dudas o necesitas reprogramar, contáctanos.</p>
+            <br>
+            <p>El equipo de CommuConnect</p>
+        </div>
+    """
+    email = brevo.SendSmtpEmail(
+        sender={"email": EMAIL_FROM, "name": "CommuConnect"},
+        to=[{"email": to_email}],
+        subject="Tu reserva ha sido cancelada",
+        html_content=html,
     )
     _api.send_transac_email(email)
