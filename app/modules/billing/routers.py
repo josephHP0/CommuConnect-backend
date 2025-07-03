@@ -7,8 +7,8 @@ from app.modules.auth.dependencies import get_current_cliente_id, get_current_us
 from app.modules.billing.models import DetalleInscripcion, Inscripcion, Pago, Plan, Suspension
 from app.modules.communities.models import ComunidadXPlan
 from app.modules.users.models import Usuario
-from .services import agregar_plan_a_comunidad_serv, crear_inscripcion, crear_pago_pendiente, get_planes, obtener_planes_no_asociados, obtener_planes_por_comunidad, pagar_pendiente
-from .schemas import ComunidadXPlanCreate, DetalleInscripcionOut, DetalleInscripcionPagoOut, InscripcionResumenOut, PlanOut, InfoInscripcionOut, SuspensionEstadoOut
+from .services import actualizar_plan, agregar_plan_a_comunidad_serv, crear_inscripcion, crear_pago_pendiente, crear_plan, eliminar_plan_logico, get_planes, obtener_planes_no_asociados, obtener_planes_por_comunidad, pagar_pendiente
+from .schemas import ComunidadXPlanCreate, DetalleInscripcionOut, DetalleInscripcionPagoOut, InscripcionResumenOut, PlanOut, InfoInscripcionOut, SuspensionEstadoOut, PlanCreate, PlanUpdate
 from typing import List, Optional
 from app.modules.billing.services import tiene_membresia_asociada
 from app.modules.billing.schemas import MembresiaAsociadaOut
@@ -441,3 +441,42 @@ def listar_todas_suspensiones(
             estado=estado_map.get(s.estado, "Desconocido")
         ))
     return resultado
+
+
+@router.post("/planes", response_model=PlanOut)
+def crear_nuevo_plan(
+    plan: PlanCreate,
+    session: Session = Depends(get_session),
+    current_user=Depends(get_current_user)
+):
+    nuevo_plan = crear_plan(session, plan, current_user.email)
+    return PlanOut.from_orm(nuevo_plan)
+
+@router.delete("/planes/{id_plan}", response_model=PlanOut)
+def eliminar_plan(
+    id_plan: int,
+    session: Session = Depends(get_session),
+    current_user=Depends(get_current_user)
+):
+    plan = eliminar_plan_logico(session, id_plan, current_user.email)
+    return PlanOut.from_orm(plan)
+
+@router.put("/planes/{id_plan}", response_model=PlanOut)
+def actualizar_plan_endpoint(
+    id_plan: int,
+    plan: PlanUpdate,
+    session: Session = Depends(get_session),
+    current_user=Depends(get_current_user)
+):
+    plan_actualizado = actualizar_plan(session, id_plan, plan, current_user.email)
+    return PlanOut.from_orm(plan_actualizado)
+
+@router.get("/planes/{id_plan}", response_model=PlanOut)
+def obtener_plan_por_id(
+    id_plan: int,
+    session: Session = Depends(get_session)
+):
+    plan = session.get(Plan, id_plan)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+    return PlanOut.from_orm(plan)

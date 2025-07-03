@@ -6,10 +6,11 @@ from utils.datetime_utils import convert_utc_to_local
 class PlanOut(BaseModel):
     id_plan: int
     titulo: str
+    duracion: Optional[int] = None
     descripcion: str
     topes: Optional[Union[int, str]] = None
     precio: float
-    duracion: Optional[int]
+    estado: int 
 
     @validator("topes", pre=True, always=True)
     def mostrar_ilimitado_si_none(cls, v):
@@ -113,3 +114,17 @@ class SuspensionEstadoOut(BaseModel):
     fecha_inicio: str
     fecha_fin: str
     estado: str
+
+class PlanCreate(BaseModel):
+    titulo: str
+    descripcion: str
+    duracion: Optional[int] = None
+    topes: Optional[int] = None
+    precio: float
+
+class PlanUpdate(BaseModel):
+    titulo: Optional[str] = None
+    descripcion: Optional[str] = None
+    duracion: Optional[int] = None
+    topes: Optional[int] = None
+    precio: Optional[float] = None
