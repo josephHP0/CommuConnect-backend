@@ -2,19 +2,20 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Q
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 from app.core.db import get_session
+from app.core.enums import ModalidadServicio
 from app.modules.auth.dependencies import get_current_user
 from app.modules.users.dependencies import get_current_admin
 from app.modules.services.services import actualizar_servicio, crear_profesional, crear_servicio, eliminar_servicio, listar_locales_por_servicio, listar_profesionales, listar_servicios, obtener_profesionales_por_servicio, obtener_servicio_por_id
 from typing import List, Optional
-from app.modules.services.schemas import ProfesionalRead, ServicioCreate, ServicioRead, ServicioUpdate, ServicioOut
+from app.modules.services.schemas import LocalCreate, ProfesionalRead, ServicioCreate, ServicioRead, ServicioUpdate, ServicioOut
 from app.modules.services.services import obtener_distritos_por_servicio_service
 from app.modules.services.schemas import DistritoOut
-from app.modules.services.models import Local
+from app.modules.services.models import Local, Servicio
 from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut
 from app.modules.services.schemas import LocalOut
 from app.modules.users.models import Usuario
 from app.modules.communities.services import obtener_servicios_con_imagen_base64
-from ..services.services import procesar_archivo_profesionales
+from ..services.services import crear_local, procesar_archivo_profesionales
 from app.modules.services.services import obtener_sesiones_virtuales_por_profesional
 from app.modules.services.schemas import SesionVirtualConDetalle
 from app.modules.services.services import obtener_detalle_sesion_virtual
@@ -69,7 +70,7 @@ def crear_servicio_endpoint(
     modalidad: str = Form(...),
     imagen: UploadFile = File(...)
 ):
-    datos = ServicioCreate(nombre=nombre, descripcion=descripcion, modalidad=modalidad)
+    datos = ServicioCreate(nombre=nombre, descripcion=descripcion, modalidad=modalidad) # type: ignore
     nuevo_servicio = crear_servicio(session, datos, imagen)
 
     import base64
@@ -79,7 +80,7 @@ def crear_servicio_endpoint(
     )
 
     return ServicioRead(
-        id_servicio=nuevo_servicio.id_servicio,
+        id_servicio=nuevo_servicio.id_servicio, # type: ignore
         nombre=nuevo_servicio.nombre,
         descripcion=nuevo_servicio.descripcion,
         modalidad=nuevo_servicio.modalidad,
@@ -88,7 +89,7 @@ def crear_servicio_endpoint(
         creado_por=nuevo_servicio.creado_por,
         fecha_modificacion=nuevo_servicio.fecha_modificacion,
         modificado_por=nuevo_servicio.modificado_por,
-        estado=nuevo_servicio.estado
+        estado=nuevo_servicio.estado # type: ignore
     )
 
 @router.delete("/servicios/{id_servicio}", status_code=200)
@@ -109,7 +110,7 @@ def actualizar_servicio_endpoint(
     modalidad: Optional[str] = Form(None),
     imagen: Optional[UploadFile] = File(None)
 ):
-    datos = ServicioUpdate(nombre=nombre, descripcion=descripcion, modalidad=modalidad)
+    datos = ServicioUpdate(nombre=nombre, descripcion=descripcion, modalidad=modalidad) # type: ignore
     servicio_actualizado = actualizar_servicio(
         db=session,
         id_servicio=id_servicio,
@@ -125,7 +126,7 @@ def actualizar_servicio_endpoint(
     )
 
     return ServicioRead(
-        id_servicio=servicio_actualizado.id_servicio,
+        id_servicio=servicio_actualizado.id_servicio, # type: ignore
         nombre=servicio_actualizado.nombre,
         descripcion=servicio_actualizado.descripcion,
         modalidad=servicio_actualizado.modalidad,
@@ -134,7 +135,7 @@ def actualizar_servicio_endpoint(
         creado_por=servicio_actualizado.creado_por,
         fecha_modificacion=servicio_actualizado.fecha_modificacion,
         modificado_por=servicio_actualizado.modificado_por,
-        estado=servicio_actualizado.estado
+        estado=servicio_actualizado.estado # type: ignore
     )
 
 @router.get("/servicios/{id_servicio}", response_model=ServicioRead)
@@ -165,6 +166,9 @@ def obtener_locales_por_servicio(id_servicio: int, db: Session = Depends(get_ses
     if not locales:
         raise HTTPException(status_code=404, detail="No se encontraron locales para este servicio")
     return locales
+
+
+
 
 
 
@@ -277,7 +281,7 @@ def listar_servicios_disponibles_para_comunidad(
                 )
                 
                 servicio_out = ServicioOut(
-                    id_servicio=servicio.id_servicio,
+                    id_servicio=servicio.id_servicio, # type: ignore
                     nombre=servicio.nombre,
                     modalidad=servicio.modalidad,
                     descripcion=servicio.descripcion,
@@ -415,3 +419,18 @@ def detalle_sesion_virtual(id: int, db: Session = Depends(get_session)):
     - Inscritos con comunidad y entrega de archivo
     """
     return obtener_detalle_sesion_virtual(id, db)
+
+@router.post("/locales", response_model=LocalOut)
+def crear_local_endpoint(
+    data: LocalCreate,
+    db: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    # Verifica que el servicio existe y es presencial
+    if data.id_servicio is not None:
+        servicio = db.get(Servicio, data.id_servicio)
+        if not servicio:
+            raise HTTPException(status_code=404, detail="Servicio no encontrado")
+        if getattr(servicio, "modalidad", None) != ModalidadServicio.presencial: # type: ignore
+            raise HTTPException(status_code=400, detail="Solo se pueden crear locales para servicios presenciales")
+    return crear_local(db, data, creado_por=current_user.email)

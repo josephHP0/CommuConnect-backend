@@ -12,8 +12,7 @@ class Plan(SQLModel, table=True):
     titulo: str = Field(max_length=100)
     descripcion: str = Field(max_length=300)
     duracion: int
-    #topes: int
-    topes: Optional[int] = Field(default=None)
+    topes: int
     precio: float = Field(sa_column=Column(DECIMAL(10, 2)))
     fecha_creacion: datetime = Field(default_factory=datetime.utcnow)
     creado_por: str = Field(max_length=50)
@@ -59,3 +58,18 @@ class DetalleInscripcion(SQLModel, table=True):
     fecha_modificacion: Optional[datetime] = None
     modificado_por: Optional[str] = Field(default=None, max_length=50)
     estado: int
+
+class Suspension(SQLModel, table=True):
+        __tablename__ = "suspension" # type: ignore
+        id_suspension: int = Field(default=None, primary_key=True)
+        id_cliente: int
+        id_inscripcion: int
+        motivo: str
+        fecha_inicio: datetime
+        fecha_fin: datetime
+        archivo: Optional[bytes] = None # type: ignore
+        fecha_creacion: datetime = Field(default_factory=datetime.utcnow, sa_column_kwargs={"nullable": False})
+        creado_por: str
+        fecha_modificacion: Optional[datetime] = None
+        modificado_por: Optional[str] = Field(default=None, max_length=50)
+        estado: int

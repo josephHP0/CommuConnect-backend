@@ -8,7 +8,7 @@ from fastapi import HTTPException, UploadFile, status, BackgroundTasks
 from datetime import datetime
 from passlib.context import CryptContext
 from app.modules.communities.schemas import ComunidadContexto
-from app.modules.services.schemas import ServicioResumen
+from app.modules.services.schemas import ProfesionalCreate, ServicioResumen
 from app.modules.communities.services import obtener_servicios_de_comunidad
 from typing import List, Optional, Dict
 from app.modules.communities.models import ClienteXComunidad, Comunidad
@@ -30,7 +30,7 @@ def crear_usuario(db: Session, usuario: UsuarioCreate):
         apellido=usuario.apellido,
         email=usuario.email,
         password=hashed_password,
-        tipo=tipo_value,
+        tipo=tipo_value, # type: ignore
         creado_por="sistema",
         estado=False
     )

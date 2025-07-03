@@ -4,6 +4,7 @@ from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id
 from app.modules.communities.services import unir_cliente_a_comunidad
+from app.modules.services.schemas import ProfesionalCreate, ProfesionalRead
 from app.modules.users.schemas import AdministradorCreate, AdministradorRead, ClienteCreate, ClienteRead, ClienteUpdate, ClienteUpdateIn, ClienteUsuarioFull, UsuarioClienteFull , UsuarioCreate, UsuarioRead,UsuarioBase
 from app.modules.users.services import crear_administrador, crear_cliente, crear_usuario, modificar_cliente, obtener_cliente_con_usuario_por_id, procesar_archivo_clientes, reenviar_confirmacion
 from app.modules.users.dependencies import get_current_admin

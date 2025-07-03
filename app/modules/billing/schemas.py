@@ -7,22 +7,16 @@ class PlanOut(BaseModel):
     id_plan: int
     titulo: str
     descripcion: str
-    #topes: Union[int, str]
     topes: Optional[Union[int, str]] = None
     precio: float
     duracion: Optional[int]
 
-    @property
-    def topes_display(self):
-        return "ilimitado" if isinstance(self.topes, int) and self.topes > 100 else self.topes
+    @validator("topes", pre=True, always=True)
+    def mostrar_ilimitado_si_none(cls, v):
+        return "ilimitado" if v is None else v
 
     class Config:
-        from_attributes = True  # <--- Cambia esto
-
-    def dict(self, *args, **kwargs):
-        data = super().dict(*args, **kwargs)
-        data["topes"] = self.topes_display
-        return data
+        from_attributes = True
 
 
 class UsoTopesOut(BaseModel):
@@ -36,7 +30,7 @@ class DetalleInscripcionBase(BaseModel):
     fecha_registro: datetime
     fecha_inicio: datetime
     fecha_fin: Optional[datetime] = None
-    topes_disponibles: int
+    topes_disponibles: Optional[int] = None
     topes_consumidos: int
     estado: int
 
@@ -110,3 +104,12 @@ class DetalleInscripcionPagoOut(BaseModel):
     hora_pago: Optional[str]
     id_pago: Optional[int]
     tarjeta: str
+
+class SuspensionEstadoOut(BaseModel):
+    id_suspension: int
+    id_cliente: int
+    id_inscripcion: int
+    motivo: str
+    fecha_inicio: str
+    fecha_fin: str
+    estado: str

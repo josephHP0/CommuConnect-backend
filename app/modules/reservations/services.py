@@ -25,8 +25,11 @@ from app.modules.reservations.schemas import SesionCargaMasiva
 from pydantic import ValidationError
 
 from datetime import datetime, timezone
+from io import BytesIO
 
 
+from app.modules.billing.models import Inscripcion, Plan
+from typing import Tuple, Optional
 
 
 def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_comunidad: int, fecha: date):
@@ -429,80 +432,148 @@ def obtener_url_archivo_virtual(session: Session, id_sesion: int) -> str | None:
     ).first()
     return sv.url_archivo if sv else None
 
-def reservar_sesion_virtual(
+
+def crear_reserva_virtual_con_validaciones(
     session: Session,
     id_sesion: int,
     cliente_id: int,
     usuario_id: int,
     id_comunidad: int
 ) -> Reserva:
-    """
-    Servicio que bloquea la fila de Sesion, valida unicidad solo en Virtual,
-    y crea la reserva, todo dentro de un SAVEPOINT (begin_nested).
-    """
-    try:
-        # 1) Savepoint en lugar de nueva transacción
+    # aquí abrimos la transacción exterior
+    with session.begin():
+        # bloque para el SAVEPOINT
         with session.begin_nested():
-            # SELECT FOR UPDATE bajo ese SAVEPOINT
-            sesion = session.exec(
-                select(Sesion)
-                  .where(Sesion.id_sesion == id_sesion)
-                  .with_for_update()
-            ).one_or_none()
-            if not sesion:
-                raise HTTPException(status_code=404, detail="Sesión no encontrada.")
-
-            # Solo para Virtual: validar que no haya reserva activa
-            if sesion.tipo == "Virtual":
-                existe = session.exec(
-                    select(Reserva)
-                    .where(
-                        Reserva.id_sesion == id_sesion,
-                        Reserva.estado_reserva.in_(["confirmada", "formulario_pendiente"])
-                    )
-                    .with_for_update()
-                ).first()
-                if existe:
-                    raise HTTPException(
-                        status_code=409,
-                        detail="Ya existe una reserva activa para esta sesión virtual."
-                    )
-
-            # Validación de conflictos horario
+            sesion = obtener_sesion_bloqueada(session, id_sesion)
+            validar_unicidad_virtual(session, sesion)
             validar_cliente_sin_conflicto(session, cliente_id, sesion, id_comunidad)
 
-            # Crear la reserva dentro del mismo SAVEPOINT
-            nueva_reserva = Reserva(
-                id_sesion      = id_sesion,
-                id_cliente     = cliente_id,
-                id_comunidad    = id_comunidad, 
-                estado_reserva = "formulario_pendiente",
-                fecha_reservada=sesion.inicio,
-                creado_por=usuario_id,
-                fecha_creacion = datetime.now(timezone.utc)
+            inscripcion = obtener_inscripcion_activa(session, cliente_id, id_comunidad)
+            plan = session.exec(
+                select(Plan).where(Plan.id_plan == inscripcion.id_plan)
+            ).one_or_none()
+            if not plan:
+                raise HTTPException(500, "El plan asociado a la inscripción no existe.")
+
+            detalle = None
+            if es_plan_con_topes(plan):
+                detalle = obtener_detalle_topes_bloqueado(session, inscripcion.id_inscripcion)
+                validar_topes_disponibles(detalle)
+
+        # fuera del SAVEPOINT, pero dentro de la transacción padre:
+        reserva = crear_reserva(
+            session=session,
+            sesion=sesion,
+            cliente_id=cliente_id,
+            comunidad_id=id_comunidad,
+            usuario_id=usuario_id
+        )
+
+        if detalle:
+            # descontamos los topes en la entidad
+            detalle.topes_disponibles  -= 1
+            detalle.topes_consumidos   += 1
+            session.add(detalle)         # asegurar que SQLModel lo rastrea
+            session.flush()             # enviar UPDATE al motor
+
+        # al salir del `with session.begin():` se ejecuta el COMMIT
+        return reserva
+
+def obtener_sesion_bloqueada(session: Session, id_sesion: int) -> Sesion:
+    sesion = session.exec(
+        select(Sesion).where(Sesion.id_sesion == id_sesion).with_for_update()
+    ).one_or_none()
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada.")
+    return sesion
+
+
+def validar_unicidad_virtual(session: Session, sesion: Sesion):
+    if sesion.tipo == "Virtual":
+        existe = session.exec(
+            select(Reserva)
+            .where(
+                Reserva.id_sesion == sesion.id_sesion,
+                Reserva.estado_reserva.in_(["confirmada", "formulario_pendiente"])
+            ).with_for_update()
+        ).first()
+        if existe:
+            raise HTTPException(
+                status_code=409,
+                detail="Ya existe una reserva activa para esta sesión virtual."
             )
-            session.add(nueva_reserva)
-            session.flush()
 
-        # 2) Al salir del begin_nested() hacemos release savepoint, pero la tx sigue abierta.
-        # 3) Aquí no hay más excepciones: FastAPI/tu router hará el commit final.
-        return nueva_reserva
 
-    except HTTPException as e:
-        raise
+def obtener_inscripcion_activa(session: Session, cliente_id: int, comunidad_id: int) -> Inscripcion:
+    inscripcion = session.exec(
+        select(Inscripcion)
+        .where(
+            Inscripcion.id_cliente == cliente_id,
+            Inscripcion.id_comunidad == comunidad_id,
+            Inscripcion.estado == 1
+        )
+    ).one_or_none()
+    if not inscripcion:
+        raise HTTPException(
+            status_code=403,
+            detail="No tienes una inscripción activa en esta comunidad."
+        )
+    return inscripcion
 
-    except IntegrityError as e:
-        session.rollback()
+
+def es_plan_con_topes(plan: Plan) -> bool:
+    return getattr(plan, "tiene_topes", False) or getattr(plan, "topes_maximos", None) is not None
+
+
+def obtener_detalle_topes_bloqueado(session: Session, id_inscripcion: int) -> DetalleInscripcion:
+    detalle = session.exec(
+        select(DetalleInscripcion)
+        .where(DetalleInscripcion.id_inscripcion == id_inscripcion)
+        .with_for_update()
+    ).one_or_none()
+    if not detalle:
+        raise HTTPException(
+            status_code=500,
+            detail="No se encontró el detalle de inscripción para topes."
+        )
+    return detalle
+
+
+def validar_topes_disponibles(detalle: DetalleInscripcion):
+    if detalle.topes_disponibles <= 0:
         raise HTTPException(
             status_code=409,
-            detail=f"Error de integridad al crear la reserva: {e.orig}"
+            detail="No tienes topes disponibles para realizar esta reserva."
         )
 
-    except Exception as e:
-        session.rollback()
-        raise HTTPException(
-            status_code=500, detail=f"Error interno al crear la reserva: {e}"
-        )
+
+def descontar_topes(detalle: DetalleInscripcion):
+    detalle.topes_disponibles -= 1
+    detalle.topes_consumidos += 1
+
+
+def crear_reserva(
+    session: Session,
+    sesion: Sesion,
+    cliente_id: int,
+    comunidad_id: int,
+    usuario_id: int
+) -> Reserva:
+    reserva = Reserva(
+        id_sesion       = sesion.id_sesion,
+        id_cliente      = cliente_id,
+        id_comunidad    = comunidad_id,
+        estado_reserva  = "formulario_pendiente",
+        fecha_reservada = sesion.inicio,
+        creado_por      = str(usuario_id),
+        fecha_creacion  = datetime.now(timezone.utc)
+    )
+    session.add(reserva)
+    session.flush()
+    return reserva
+
+
+
     
 def obtener_resumen_reserva_presencial(db: Session, id_sesion: int, id_usuario: int):
     # 1. Obtener datos del usuario
@@ -932,105 +1003,84 @@ def verificar_cruce_de_reservas(db: Session, id_cliente: int, id_comunidad: int,
 
 
 
-
-
-def procesar_archivo_sesiones(db: Session, archivo, creado_por: str):
-
-    df = pd.read_excel(archivo.file)
-
-    # ✅ Línea clave: reemplaza todos los NaN por None
+def procesar_archivo_sesiones_virtuales(db: Session, archivo, creado_por: str):
+    df = pd.read_excel(BytesIO(archivo.file.read()), engine="openpyxl")
     df = df.replace({np.nan: None})
 
     resumen = {
         "insertados": 0,
-        "omitidos": 0,
         "errores": []
     }
 
     for idx, fila in df.iterrows():
         try:
             datos = SesionCargaMasiva.model_validate(fila.to_dict())
-            resultado = procesar_fila_sesion(datos, db, creado_por)
-            if resultado == "omitido":
-                resumen["omitidos"] += 1
-            else:
-                resumen["insertados"] += 1
+            procesar_fila_sesion_virtual(datos, db, creado_por)
+            resumen["insertados"] += 1
         except ValidationError as ve:
-            resumen["errores"].append(f"Fila {idx + 2}: Error de validación: {ve}")
+            resumen["errores"].append(f"Fila {idx + 2}: Error de validación - {ve}")
         except Exception as e:
             db.rollback()
             resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")
 
     return resumen
 
-def procesar_fila_sesion(datos: SesionCargaMasiva, db: Session, creado_por: str) -> str:
-    validar_servicio_existente(datos.id_servicio, datos.modalidad, db)
-    nueva_sesion = crear_sesion_base(datos, creado_por, db)
 
-    if datos.modalidad.lower() == "presencial":
-        procesar_presencial(datos, nueva_sesion.id_sesion, db, creado_por)
-    elif datos.modalidad.lower() == "virtual":
-        procesar_virtual(datos, nueva_sesion.id_sesion, db, creado_por)
-    else:
-        raise ValueError("Modalidad inválida. Debe ser 'Presencial' o 'Virtual'")
+def procesar_fila_sesion_virtual(datos: SesionCargaMasiva, db: Session, creado_por: str):
+    ahora = datetime.now(timezone.utc)
 
-    db.commit()
-    return "insertado"
-
-def validar_servicio_existente(id_servicio: int, modalidad: str, db: Session):
-    servicio = db.exec(select(Servicio).where(Servicio.id_servicio == id_servicio)).first()
-    if not servicio:
-        raise ValueError(f"Servicio {id_servicio} no existe")
-    if servicio.modalidad.lower() != modalidad.lower():
-        raise ValueError(f"Modalidad no coincide con el servicio (esperado: {servicio.modalidad})")
-    return servicio
-
-def validar_servicio_en_comunidad(id_servicio: int, id_comunidad: int, db: Session):
-    existe = db.exec(
-        select(ComunidadXServicio).where(
-            (ComunidadXServicio.id_servicio == id_servicio) &
-            (ComunidadXServicio.id_comunidad == id_comunidad)
+    # ✅ Normalizar fechas para evitar errores de comparación
+    if datos.fecha_inicio.tzinfo is None:
+        datos.fecha_inicio = datos.fecha_inicio.replace(tzinfo=timezone.utc)
+    if datos.fecha_fin.tzinfo is None:
+        datos.fecha_fin = datos.fecha_fin.replace(tzinfo=timezone.utc)
+        
+    if datos.fecha_inicio < ahora:
+        raise ValueError(
+            f"No se puede crear una sesión en el pasado: {datos.fecha_inicio}"
         )
-    ).first()
-    if not existe:
-        raise ValueError(f"El servicio {id_servicio} no está habilitado para la comunidad {id_comunidad}")
 
-def crear_sesion_base(datos: SesionCargaMasiva, creado_por: str, db: Session):
+    if datos.fecha_inicio >= datos.fecha_fin:
+        raise ValueError(
+            f"La fecha de inicio debe ser anterior a la fecha de fin."
+        )
+
+    # Validar servicio virtual
+    servicio = db.exec(
+        select(Servicio).where(Servicio.id_servicio == datos.id_servicio)
+    ).first()
+    if not servicio:
+        raise ValueError(f"Servicio con ID {datos.id_servicio} no existe.")
+    if servicio.modalidad.lower() != "virtual":
+        raise ValueError(f"El servicio {datos.id_servicio} no es de modalidad virtual.")
+
+    # Validar profesional
+    profesional = db.exec(
+        select(Profesional).where(Profesional.id_profesional == datos.id_profesional)
+    ).first()
+    if not profesional:
+        raise ValueError(f"Profesional con ID {datos.id_profesional} no existe.")
+
+    # Validaciones de conflicto lógico
+    validar_sesion_duplicada(db, datos)
+    validar_sesion_solapada(db, datos)
+
+    # Si todo está bien, ahora sí se crea la sesión
     nueva_sesion = Sesion(
         id_servicio=datos.id_servicio,
-        tipo=datos.modalidad.capitalize(),
-        descripcion=f"Sesión de servicio {datos.id_servicio}",  # Si usas un campo `descripcion`
+        tipo="Virtual",
+        descripcion=datos.descripcion or f"Sesión virtual de servicio {datos.id_servicio}",
         inicio=datos.fecha_inicio,
+        fin=datos.fecha_fin,
         creado_por=creado_por,
         fecha_creacion=datetime.now(timezone.utc),
         estado=1
     )
     db.add(nueva_sesion)
-    db.flush()
-    return nueva_sesion
+    db.flush()  # Ahora sí, porque ya validamos todo
 
-def procesar_presencial(datos: SesionCargaMasiva, id_sesion: int, db: Session, creado_por: str):
-    local = db.exec(select(Local).where(Local.id_local == datos.id_local)).first()
-    if not local:
-        raise ValueError(f"Local {datos.id_local} no existe")
-
-    nueva = SesionPresencial(
-        id_sesion=id_sesion,
-        id_local=datos.id_local,
-        capacidad=datos.capacidad,
-        creado_por=creado_por,
-        fecha_creacion=datetime.now(timezone.utc),
-        estado=1
-    )
-    db.add(nueva)
-
-def procesar_virtual(datos: SesionCargaMasiva, id_sesion: int, db: Session, creado_por: str):
-    profesional = db.exec(select(Profesional).where(Profesional.id_profesional == datos.id_profesional)).first()
-    if not profesional:
-        raise ValueError(f"Profesional {datos.id_profesional} no existe")
-
-    nueva = SesionVirtual(
-        id_sesion=id_sesion,
+    nueva_virtual = SesionVirtual(
+        id_sesion=nueva_sesion.id_sesion,
         id_profesional=datos.id_profesional,
         url_meeting=datos.url_meeting,
         url_archivo=datos.url_archivo,
@@ -1038,4 +1088,102 @@ def procesar_virtual(datos: SesionCargaMasiva, id_sesion: int, db: Session, crea
         fecha_creacion=datetime.now(timezone.utc),
         estado=1
     )
-    db.add(nueva)
+    db.add(nueva_virtual)
+    db.commit()
+
+
+def validar_sesion_duplicada(db: Session, datos: SesionCargaMasiva):
+    existe = db.exec(
+        select(Sesion)
+        .join(SesionVirtual, Sesion.id_sesion == SesionVirtual.id_sesion)
+        .where(
+            Sesion.id_servicio == datos.id_servicio,
+            Sesion.inicio == datos.fecha_inicio,
+            SesionVirtual.id_profesional == datos.id_profesional
+        )
+    ).first()
+
+    if existe:
+        raise ValueError(
+            f"Ya existe una sesión virtual programada para el servicio {datos.id_servicio}, "
+            f"con el profesional {datos.id_profesional} exactamente a las {datos.fecha_inicio}."
+        )
+
+
+def validar_sesion_solapada(db: Session, datos: SesionCargaMasiva):
+    solapada = db.exec(
+        select(Sesion)
+        .join(SesionVirtual, Sesion.id_sesion == SesionVirtual.id_sesion)
+        .where(
+            SesionVirtual.id_profesional == datos.id_profesional,
+            Sesion.id_servicio == datos.id_servicio,
+            Sesion.inicio < datos.fecha_fin,
+            Sesion.fin > datos.fecha_inicio
+        )
+    ).first()
+
+    if solapada:
+        raise ValueError(
+            f"El profesional {datos.id_profesional} ya tiene una sesión que se cruza entre "
+            f"{datos.fecha_inicio} y {datos.fecha_fin} para el mismo servicio {datos.id_servicio}."
+        )
+
+
+
+
+def obtener_resumen_reserva_virtual(
+    db: Session, id_reserva: int, id_usuario: int
+) -> Tuple[Optional[dict], Optional[str]]:
+    # 1. Buscar la reserva
+    reserva = db.get(Reserva, id_reserva)
+    if not reserva:
+        return None, "Reserva no encontrada"
+    
+    # 2. Verificar que le pertenece al usuario
+    cliente = db.get(Cliente, reserva.id_cliente)
+    if not cliente or cliente.id_usuario != id_usuario:
+        return None, "No autorizado para ver esta reserva"
+
+    # 3. Obtener los datos del usuario (nombre y apellido)
+    usuario = db.get(Usuario, cliente.id_usuario)
+    if not usuario:
+        return None, "No se encontró el usuario asociado"
+
+    # 4. Obtener datos de la sesión y recurso virtual
+    stmt = (
+        select(
+            Servicio.nombre,
+            Sesion.inicio,
+            Sesion.fin,
+            SesionVirtual.url_archivo
+        )
+        .join(Servicio, Sesion.id_servicio == Servicio.id_servicio)
+        .join(SesionVirtual, Sesion.id_sesion == SesionVirtual.id_sesion)
+        .where(Sesion.id_sesion == reserva.id_sesion)
+    )
+    result = db.exec(stmt).first()
+
+    if not result:
+        return None, "Sesión virtual no encontrada"
+
+    nombre_servicio, inicio, fin, url_archivo = result
+
+    local_inicio = convert_utc_to_local(inicio)
+    local_fin = convert_utc_to_local(fin)
+
+    resumen = {
+        "id_sesion": reserva.id_sesion,
+        "fecha": local_inicio.date(),
+        "hora_inicio": local_inicio.strftime("%H:%M"),
+        "hora_fin": local_fin.strftime("%H:%M"),
+        "link_formulario": url_archivo or "",
+        "nombres": usuario.nombre,
+        "apellidos": usuario.apellido,
+        "mensaje_exito": "Reserva realizada con éxito.",
+        "nota": (
+            "Puede llenar este link más tarde desde la sección 'mis reservas', "
+            "pero debe completarlo para que el profesional pueda atenderlo."
+        )
+    }
+
+    return resumen, None

@@ -10,7 +10,7 @@ from app.modules.reservations.services import (
     obtener_fechas_presenciales, obtener_horas_presenciales, listar_sesiones_presenciales_detalladas,
     obtener_fechas_inicio_por_profesional, existe_reserva_para_usuario, obtener_resumen_reserva_presencial, 
     crear_reserva_presencial, listar_reservas_usuario_comunidad_semana, get_reservation_details, 
-    cancelar_reserva_por_id, reservar_sesion_virtual, obtener_url_archivo_virtual, 
+    cancelar_reserva_por_id, obtener_url_archivo_virtual, 
     obtener_info_formulario, completar_formulario_virtual
 )
 from app.modules.reservations.schemas import (
@@ -20,16 +20,18 @@ from app.modules.reservations.schemas import (
     ReservaCreate, ReservaPresencialCreadaResponse
 )
 from app.modules.auth.dependencies import get_current_user, get_current_cliente_id
-from app.modules.reservations.models import Sesion, Reserva, SesionVirtual
-from sqlalchemy.exc import IntegrityError
+from app.modules.reservations.models import  SesionVirtual
 from app.modules.users.models import Usuario
 from fastapi import BackgroundTasks
 from app.modules.billing.services import obtener_inscripcion_activa, es_plan_con_topes
 from utils.datetime_utils import convert_utc_to_local
 from app.modules.users.services import obtener_cliente_desde_usuario
 from app.modules.services.models import Profesional
-from app.modules.reservations.services import procesar_archivo_sesiones
+from app.modules.reservations.services import procesar_archivo_sesiones_virtuales
 from app.modules.users.dependencies import get_current_admin
+from app.modules.reservations.services import crear_reserva_virtual_con_validaciones
+from app.modules.reservations.services import obtener_resumen_reserva_virtual
+from app.modules.reservations.schemas import ReservaVirtualSummary
 
 router = APIRouter()
 
@@ -183,6 +185,8 @@ def verificar_reserva(
         print(f"Error al verificar reserva: {e}")
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
+
+
 @router.post(
     "/virtual",
     response_model=ReservaResponse,
@@ -196,26 +200,31 @@ def create_reserva_virtual(
     usuario: Usuario = Depends(get_current_user)
 ) -> ReservaResponse:
     """
-    Crea una reserva para una sesión virtual.
-    El frontend solo envía el id_sesion; el backend orquesta validaciones y retorna la reserva.
+    Endpoint para crear una reserva virtual.
+    Orquesta validaciones desde el service y retorna la reserva creada.
     """
     try:
-        # 1) Llamamos al service, que solo añade y hace flush
-        reserva = reservar_sesion_virtual(
-            session, reserva_in.id_sesion, cliente_id, usuario.id_usuario,
-            id_comunidad=reserva_in.id_comunidad )
+        # 1. Orquestador principal (service)
+        reserva = crear_reserva_virtual_con_validaciones(
+            session=session,
+            id_sesion=reserva_in.id_sesion,
+            cliente_id=cliente_id,
+            usuario_id=usuario.id_usuario,
+            id_comunidad=reserva_in.id_comunidad
+        )
 
-        # 2) Si no hubo excepción, confirmamos la transacción
+        # 2. Confirmamos transacción
         session.commit()
 
-        # 3) Ahora podemos seguir obteniendo datos relacionados
+        # 3. Obtenemos URL del recurso virtual si aplica
         url_archivo = obtener_url_archivo_virtual(session, reserva.id_sesion)
 
+        # 4. Construimos respuesta para el frontend
         return ReservaResponse(
             id_reserva=reserva.id_reserva,
             id_sesion=reserva.id_sesion,
             id_cliente=reserva.id_cliente,
-            id_comunidad=reserva.id_comunidad, 
+            id_comunidad=reserva.id_comunidad,
             estado_reserva=reserva.estado_reserva,
             fecha_reservada=reserva.fecha_reservada,
             url_archivo=url_archivo,
@@ -223,26 +232,15 @@ def create_reserva_virtual(
         )
 
     except HTTPException:
-        # Rollback de validaciones (404, 409, etc.)
         session.rollback()
         raise
 
-    except IntegrityError:
-        # Si detectas un IntegrityError inesperado
-        session.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error de concurrencia al procesar la reserva. Intenta nuevamente."
-        )
-
     except Exception:
-        # Cualquier otro error
         session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error interno al crear la reserva."
         )
-    
 
 
 @router.get(
@@ -432,16 +430,60 @@ async def enviar_formulario(
     )
 
 
-
-@router.post("/sesiones/carga-masiva")
-def carga_masiva_sesiones(
+@router.post("/carga-masiva")
+def carga_masiva_sesiones_virtuales(
     archivo: UploadFile = File(...),
     db: Session = Depends(get_session),
     current_admin: Usuario = Depends(get_current_admin)
 ):
     try:
-        resultado = procesar_archivo_sesiones(db, archivo, current_admin.email)
-        return {"mensaje": "Carga masiva completada", "resumen": resultado}
+        resultado = procesar_archivo_sesiones_virtuales(db, archivo, current_admin.email)
+        return {
+            "mensaje": "Carga masiva de sesiones virtuales completada correctamente.",
+            "resumen": resultado
+        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error en carga masiva: {str(e)}")
+@router.get(
+    "/virtual/summary/reserva/{id_reserva}",
+    response_model=ReservaVirtualSummary,
+    summary="Obtiene el resumen de una reserva virtual específica para el usuario actual",
+)
+def get_resumen_reserva_virtual(
+    *,
+    id_reserva: int,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user),
+):
+    resumen, error = obtener_resumen_reserva_virtual(
+        db=session,
+        id_reserva=id_reserva,
+        id_usuario=current_user.id_usuario,
+    )
 
+    if error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error)
+
+    return resumen
+
+@router.get(
+    "/virtual/summary/reserva/{id_reserva}",
+    response_model=ReservaVirtualSummary,
+    summary="Obtiene el resumen de una reserva virtual específica para el usuario actual",
+)
+def get_resumen_reserva_virtual(
+    *,
+    id_reserva: int,
+    session: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user),
+):
+    resumen, error = obtener_resumen_reserva_virtual(
+        db=session,
+        id_reserva=id_reserva,
+        id_usuario=current_user.id_usuario,
+    )
+
+    if error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error)
+
+    return resumen
