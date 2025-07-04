@@ -1,7 +1,8 @@
 from sqlmodel import Session, select
 from app.core.enums import TipoUsuario
+from app.modules.geography.models import Departamento, Distrito
 from app.modules.users.models import Administrador, Usuario, Cliente
-from app.modules.users.schemas import ClienteCreate, ClienteUpdate, UsuarioBase, UsuarioCreate, AdministradorCreate
+from app.modules.users.schemas import ClienteCreate, ClienteUpdate, ClienteUsuarioFull, UsuarioBase, UsuarioCreate, AdministradorCreate
 from app.core.security import hash_password,create_confirmation_token
 from utils.email_brevo import send_confirmation_email
 from fastapi import HTTPException, UploadFile, status, BackgroundTasks
@@ -239,6 +240,17 @@ def modificar_cliente(db: Session, id_usuario: int, data: dict, current_admin):
     return cliente
 
 
+# def obtener_cliente_con_usuario_por_id(db: Session, id_cliente: int):
+#     cliente = db.exec(
+#         select(Cliente).where(Cliente.id_cliente == id_cliente)
+#     ).first()
+
+#     if not cliente:
+#         raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+#     return cliente
+
+
 def obtener_cliente_con_usuario_por_id(db: Session, id_cliente: int):
     cliente = db.exec(
         select(Cliente).where(Cliente.id_cliente == id_cliente)
@@ -247,7 +259,30 @@ def obtener_cliente_con_usuario_por_id(db: Session, id_cliente: int):
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
-    return cliente
+    # Obtener nombres de departamento y distrito
+    departamento = db.get(Departamento, cliente.id_departamento)
+    distrito = db.get(Distrito, cliente.id_distrito)
+
+    # Obtener usuario relacionado
+    usuario = db.get(Usuario, cliente.id_usuario)
+
+    # Construir el esquema con los nombres
+    return ClienteUsuarioFull(
+        id_cliente=cliente.id_cliente, # type: ignore
+        tipo_documento=cliente.tipo_documento,
+        num_doc=cliente.num_doc,
+        numero_telefono=cliente.numero_telefono,
+        id_departamento=cliente.id_departamento,
+        departamento_nombre=departamento.nombre if departamento else None,
+        id_distrito=cliente.id_distrito,
+        distrito_nombre=distrito.nombre if distrito else None,
+        direccion=cliente.direccion,
+        fecha_nac=cliente.fecha_nac,
+        genero=cliente.genero,
+        talla=cliente.talla,
+        peso=cliente.peso,
+        usuario=usuario # type: ignore
+    )
 
 def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str):
     df = pd.read_excel(BytesIO(archivo.file.read()), engine="openpyxl")

@@ -128,7 +128,9 @@ class ClienteUsuarioFull(BaseModel):
     num_doc: str
     numero_telefono: str
     id_departamento: int
+    departamento_nombre: Optional[str] = None
     id_distrito: int
+    distrito_nombre: Optional[str] = None
     direccion: Optional[str]
     fecha_nac: Optional[date]
     genero: Optional[str]
@@ -140,13 +142,13 @@ class ClienteUsuarioFull(BaseModel):
         from_attributes = True
 
 class ClienteUpdateIn(BaseModel):
-    numero_telefono: Optional[str]
-    id_departamento: Optional[int]
-    id_distrito: Optional[int]
-    direccion: Optional[str]
-    genero: Optional[str]
-    talla: Optional[int]
-    peso: Optional[int]
+    numero_telefono: Optional[str] = None
+    departamento_nombre: Optional[str] = None
+    distrito_nombre: Optional[str] = None
+    direccion: Optional[str] = None
+    genero: Optional[str] = None
+    talla: Optional[float] = None
+    peso: Optional[float] = None
 
 
 class SolicitarRecuperacionSchema(BaseModel):

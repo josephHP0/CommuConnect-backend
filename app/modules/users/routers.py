@@ -4,6 +4,7 @@ from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id
 from app.modules.communities.services import unir_cliente_a_comunidad
+from app.modules.geography.models import Departamento, Distrito
 from app.modules.services.schemas import ProfesionalCreate, ProfesionalRead
 from app.modules.users.schemas import AdministradorCreate, AdministradorRead, ClienteCreate, ClienteRead, ClienteUpdate, ClienteUpdateIn, ClienteUsuarioFull, UsuarioClienteFull , UsuarioCreate, UsuarioRead,UsuarioBase
 from app.modules.users.services import crear_administrador, crear_cliente, crear_usuario, modificar_cliente, obtener_cliente_con_usuario_por_id, procesar_archivo_clientes, reenviar_confirmacion
@@ -351,7 +352,8 @@ def carga_masiva_clientes(
         return {"mensaje": "Carga masiva completada", "resumen": resultado}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
+    
+from sqlalchemy import func
 
 @router.put("/usuario/cliente/actualizar")
 def actualizar_datos_cliente(
@@ -365,8 +367,32 @@ def actualizar_datos_cliente(
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
+    update_data = datos.dict(exclude_unset=True)
+
+    # Si viene el nombre del distrito, buscar el distrito y su departamento
+    if "distrito_nombre" in update_data and update_data["distrito_nombre"]:
+        nombre_dist = update_data.pop("distrito_nombre")
+        distrito = session.exec(
+            select(Distrito).where(func.lower(Distrito.nombre) == nombre_dist.strip().lower())
+        ).first()
+        if not distrito:
+            raise HTTPException(status_code=404, detail="Distrito no encontrado")
+        update_data["id_distrito"] = distrito.id_distrito
+        # Cambia también el departamento según el distrito encontrado
+        update_data["id_departamento"] = distrito.id_departamento
+
+    # Si viene el nombre del departamento, buscar el id (solo si no se cambió por el distrito)
+    if "departamento_nombre" in update_data and update_data["departamento_nombre"]:
+        nombre_dep = update_data.pop("departamento_nombre")
+        departamento = session.exec(
+            select(Departamento).where(func.lower(Departamento.nombre) == nombre_dep.strip().lower())
+        ).first()
+        if not departamento:
+            raise HTTPException(status_code=404, detail="Departamento no encontrado")
+        update_data["id_departamento"] = departamento.id_departamento
+
     # Actualiza solo los campos enviados
-    for field, value in datos.dict(exclude_unset=True).items():
+    for field, value in update_data.items():
         setattr(cliente, field, value)
     session.add(cliente)
     session.commit()
