@@ -156,16 +156,17 @@ def obtener_comunidades_del_cliente(session: Session, id_cliente: int) -> List[C
     return comunidades # type: ignore
 
 
-def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int) -> str:
+def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int) -> int:
     inscripcion = session.exec(
-        select(Inscripcion).where(
+        select(Inscripcion)
+        .where(
             Inscripcion.id_cliente == id_cliente,
-            Inscripcion.id_comunidad == id_comunidad,
-            Inscripcion.estado == 1
+            Inscripcion.id_comunidad == id_comunidad
         )
+        .order_by(Inscripcion.fecha_creacion.desc()) # type: ignore
     ).first()
-
-    return "activa" if inscripcion else "inactiva"
+    # Si no hay inscripción, puedes retornar None o un valor especial si lo deseas
+    return inscripcion.estado if inscripcion else None # type: ignore
 
 def construir_respuesta_contexto(
     session: Session,

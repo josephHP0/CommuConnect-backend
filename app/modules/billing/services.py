@@ -212,7 +212,7 @@ def crear_detalle_inscripcion(
         fecha_registro=fecha_inicio,
         fecha_inicio=fecha_inicio,
         fecha_fin=fecha_fin,
-        topes_disponibles=plan.topes,
+        topes_disponibles=plan.topes, # type: ignore
         topes_consumidos=0,
         fecha_creacion=fecha_inicio,
         creado_por=creado_por,
