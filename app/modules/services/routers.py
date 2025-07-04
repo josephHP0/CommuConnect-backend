@@ -19,7 +19,10 @@ from ..services.services import crear_local, procesar_archivo_profesionales
 from app.modules.services.services import obtener_sesiones_virtuales_por_profesional, obtener_sesiones_presenciales_por_local
 from app.modules.services.schemas import SesionVirtualConDetalle,SesionPresencialConDetalle
 from app.modules.services.services import obtener_detalle_sesion_virtual
+from app.modules.services.services import obtener_detalle_sesion_presencial
 from app.modules.services.schemas import DetalleSesionVirtualResponse
+from app.modules.services.schemas import DetalleSesionPresencialResponse
+
 
 router = APIRouter()
 
@@ -429,6 +432,11 @@ def detalle_sesion_virtual(id: int, db: Session = Depends(get_session)):
     - Inscritos con comunidad y entrega de archivo
     """
     return obtener_detalle_sesion_virtual(id, db)
+
+@router.get("/sesiones-presenciales/{id}/detalle", response_model=DetalleSesionPresencialResponse)
+def detalle_sesion_presencial(id: int, db: Session = Depends(get_session)):
+    return obtener_detalle_sesion_presencial(id, db)
+
 
 @router.post("/locales", response_model=LocalOut)
 def crear_local_endpoint(

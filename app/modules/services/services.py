@@ -9,8 +9,9 @@ from app.modules.services.models import Local, Profesional      # Modelo Local d
 from app.modules.services.schemas import DistritoOut, ServicioCreate, ServicioRead, ServicioUpdate  # Esquema de salida (DTO)
 import base64
 from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut, SesionVirtualConDetalle, SesionPresencialConDetalle
+from app.modules.services.schemas import InscritoPresencialDetalleOut
 import pandas as pd
-from .schemas import DetalleSesionVirtualResponse, LocalCreate, ProfesionalDetalleOut, InscritoDetalleOut
+from .schemas import DetalleSesionVirtualResponse, LocalCreate, ProfesionalDetalleOut, InscritoDetalleOut,DetalleSesionPresencialResponse,LocalDetalleOut
 from app.modules.users.models import Cliente, Usuario
 from app.modules.communities.models import Comunidad
 from io import BytesIO
@@ -282,6 +283,22 @@ def obtener_sesiones_virtuales_por_profesional(
     return resultado
 
 
+def get_sesion_presencial_con_local(id_sesion_presencial: int, db: Session):
+    sp = db.exec(
+        select(SesionPresencial)
+        .where(SesionPresencial.id_sesion_presencial == id_sesion_presencial)
+    ).first()
+
+    if not sp:
+        raise HTTPException(status_code=404, detail="Sesión presencial no encontrada")
+
+    sesion = db.get(Sesion, sp.id_sesion)
+    local = db.get(Local, sp.id_local)
+
+    return sp, sesion, local
+
+
+
 
 
 def obtener_detalle_sesion_virtual(id_sesion_virtual: int, db: Session) -> DetalleSesionVirtualResponse:
@@ -299,6 +316,34 @@ def obtener_detalle_sesion_virtual(id_sesion_virtual: int, db: Session) -> Detal
         profesional=profesional_out,
         inscritos=inscritos_out
     )
+def formatear_local(local: Local) -> LocalDetalleOut:
+    return LocalDetalleOut(
+        nombre=local.nombre,
+        direccion_detallada=local.direccion_detallada,
+        responsable=local.responsable
+    )
+
+
+def obtener_detalle_sesion_presencial(id_sesion_presencial: int, db: Session) -> DetalleSesionPresencialResponse:
+    # Obtener datos: SesionPresencial, Sesion, Local
+    sp, sesion, local = get_sesion_presencial_con_local(id_sesion_presencial, db)
+
+    # Formatear local
+    local_out = formatear_local(local)
+
+    # Listar inscritos
+    inscritos_out = listar_inscritos_presencial(sp.id_sesion, db)
+
+    return DetalleSesionPresencialResponse(
+        id_sesion_presencial=sp.id_sesion_presencial,
+        descripcion=sesion.descripcion,
+        fecha=sesion.inicio.date() if sesion.inicio else None,
+        hora_inicio=sesion.inicio.time() if sesion.inicio else None,
+        hora_fin=sesion.fin.time() if sesion.fin else None,
+        local=local_out,
+        inscritos=inscritos_out
+    )
+
 
 
 def obtener_sesiones_presenciales_por_local(
@@ -385,6 +430,27 @@ def listar_inscritos_de_sesion(id_sesion: int, db: Session) -> List[InscritoDeta
         ))
 
     return inscritos
+
+def listar_inscritos_presencial(id_sesion: int, db: Session) -> List[InscritoPresencialDetalleOut]:
+    reservas = db.exec(
+        select(Reserva).where(Reserva.id_sesion == id_sesion)
+    ).all()
+
+    inscritos = []
+
+    for reserva in reservas:
+        cliente = db.get(Cliente, reserva.id_cliente)
+        usuario = db.get(Usuario, cliente.id_usuario)
+        comunidad = db.get(Comunidad, reserva.id_comunidad)
+
+        inscritos.append(InscritoPresencialDetalleOut(
+            nombre=usuario.nombre,
+            apellido=usuario.apellido,
+            comunidad=comunidad.nombre
+        ))
+
+    return inscritos
+
 
 def crear_local(
     db: Session,
