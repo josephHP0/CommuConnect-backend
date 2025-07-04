@@ -4,6 +4,7 @@ from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id
 from app.modules.communities.services import unir_cliente_a_comunidad
+from app.modules.geography.models import Departamento, Distrito
 from app.modules.services.schemas import ProfesionalCreate, ProfesionalRead
 from app.modules.users.schemas import AdministradorCreate, AdministradorRead, ClienteCreate, ClienteRead, ClienteUpdate, ClienteUpdateIn, ClienteUsuarioFull, UsuarioClienteFull , UsuarioCreate, UsuarioRead,UsuarioBase
 from app.modules.users.services import crear_administrador, crear_cliente, crear_usuario, modificar_cliente, obtener_cliente_con_usuario_por_id, procesar_archivo_clientes, reenviar_confirmacion
@@ -28,8 +29,16 @@ from app.modules.billing.services import (
     es_plan_con_topes,
     obtener_detalle_topes
     )
-
-
+from app.modules.users.schemas import (
+    SolicitarRecuperacionSchema,
+    CambioContrasenaSchema
+)
+from app.modules.users.services import (
+    solicitar_recuperacion_contrasena_con_link,
+)
+from app.modules.users.schemas import VerificarTokenSchema
+from app.modules.users.services import verificar_token_reset_password, cambiar_contrasena_con_link
+from fastapi import BackgroundTasks
 
 router = APIRouter()
 
@@ -323,6 +332,8 @@ def actualizar_cliente(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al actualizar cliente: {str(e)}")
 
+
+
 @router.get("/cliente/id/{id_cliente}", response_model=ClienteUsuarioFull)
 def obtener_cliente_por_id_cliente(
     id_cliente: int,
@@ -342,6 +353,8 @@ def carga_masiva_clientes(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
+from sqlalchemy import func
+
 @router.put("/usuario/cliente/actualizar")
 def actualizar_datos_cliente(
     datos: ClienteUpdateIn,
@@ -354,10 +367,61 @@ def actualizar_datos_cliente(
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
 
+    update_data = datos.dict(exclude_unset=True)
+
+    # Si viene el nombre del distrito, buscar el distrito y su departamento
+    if "distrito_nombre" in update_data and update_data["distrito_nombre"]:
+        nombre_dist = update_data.pop("distrito_nombre")
+        distrito = session.exec(
+            select(Distrito).where(func.lower(Distrito.nombre) == nombre_dist.strip().lower())
+        ).first()
+        if not distrito:
+            raise HTTPException(status_code=404, detail="Distrito no encontrado")
+        update_data["id_distrito"] = distrito.id_distrito
+        # Cambia también el departamento según el distrito encontrado
+        update_data["id_departamento"] = distrito.id_departamento
+
+    # Si viene el nombre del departamento, buscar el id (solo si no se cambió por el distrito)
+    if "departamento_nombre" in update_data and update_data["departamento_nombre"]:
+        nombre_dep = update_data.pop("departamento_nombre")
+        departamento = session.exec(
+            select(Departamento).where(func.lower(Departamento.nombre) == nombre_dep.strip().lower())
+        ).first()
+        if not departamento:
+            raise HTTPException(status_code=404, detail="Departamento no encontrado")
+        update_data["id_departamento"] = departamento.id_departamento
+
     # Actualiza solo los campos enviados
-    for field, value in datos.dict(exclude_unset=True).items():
+    for field, value in update_data.items():
         setattr(cliente, field, value)
     session.add(cliente)
     session.commit()
     session.refresh(cliente)
     return {"ok": True, "message": "Datos actualizados correctamente"}
+
+@router.post("/recuperar-contrasena/link")
+def solicitar_link_recuperacion(
+    datos: SolicitarRecuperacionSchema,
+    bg: BackgroundTasks,  # ← primero los sin default
+    db: Session = Depends(get_session)
+):
+    """
+    Solicita un enlace de recuperación (token temporal JWT)
+    """
+    return solicitar_recuperacion_contrasena_con_link(db, datos.email, bg)
+
+@router.post("/verificar-token")
+def verificar_token_contrasena(datos: VerificarTokenSchema):
+    return verificar_token_reset_password(datos.token)
+
+
+@router.post("/reset-password/link")
+def resetear_contrasena_con_link(
+    datos: CambioContrasenaSchema,
+    bg: BackgroundTasks,  # ✅ Sin valor por defecto
+    db: Session = Depends(get_session)  # ✅ Con valor por defecto
+):
+    """
+    Cambia la contraseña usando el token enviado por correo (válido solo si no expiró).
+    """
+    return cambiar_contrasena_con_link(db, datos.token, datos.nueva_contrasena, bg)

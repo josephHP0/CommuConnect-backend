@@ -9,6 +9,7 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user_rol: TipoUsuario
+    id_cliente: int
 
 
 class RegisterRequest(BaseModel):

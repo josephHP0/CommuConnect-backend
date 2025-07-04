@@ -8,6 +8,7 @@ from app.modules.users.routers import router as usuarios_router
 from app.modules.billing.routers import router as billing_router
 from app.modules.services.routers import router as  services_router
 from app.modules.reservations.routers import router as  reservations_router
+from app.modules.geography.routers import router as geography_router
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
@@ -17,8 +18,10 @@ logging.basicConfig(level=logging.DEBUG)
 app = FastAPI(debug=True)
 
 origins = [
-    #"http://localhost:4200"
-    "http://commuconnect-frontend-v1.s3-website-us-east-1.amazonaws.com"
+
+    "http://localhost:4200"
+    #"http://commuconnect-frontend-v1.s3-website-us-east-1.amazonaws.com"
+
 ]
 
 app.add_middleware(
@@ -42,6 +45,7 @@ app.include_router(usuarios_router,  prefix="/api/usuarios", tags=["Usuarios"])
 app.include_router(billing_router, prefix="/api/billing", tags=["Billing"])
 app.include_router(services_router, prefix="/api/services", tags=["Services"])
 app.include_router(reservations_router, prefix="/api/reservations", tags=["Reservations"])
+app.include_router(geography_router, prefix="/api/geography", tags=["Geography"])
 
 def custom_openapi():
     if app.openapi_schema:

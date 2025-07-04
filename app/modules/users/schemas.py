@@ -2,6 +2,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, validator
 from typing import Literal, Optional
 from datetime import date, datetime
 from utils.datetime_utils import convert_utc_to_local
+from pydantic import BaseModel, EmailStr
 
 from app.core.enums import TipoDocumento, TipoUsuario
 
@@ -127,7 +128,9 @@ class ClienteUsuarioFull(BaseModel):
     num_doc: str
     numero_telefono: str
     id_departamento: int
+    departamento_nombre: Optional[str] = None
     id_distrito: int
+    distrito_nombre: Optional[str] = None
     direccion: Optional[str]
     fecha_nac: Optional[date]
     genero: Optional[str]
@@ -139,10 +142,22 @@ class ClienteUsuarioFull(BaseModel):
         from_attributes = True
 
 class ClienteUpdateIn(BaseModel):
-    numero_telefono: Optional[str]
-    id_departamento: Optional[int]
-    id_distrito: Optional[int]
-    direccion: Optional[str]
-    genero: Optional[str]
-    talla: Optional[int]
-    peso: Optional[int]
+    numero_telefono: Optional[str] = None
+    departamento_nombre: Optional[str] = None
+    distrito_nombre: Optional[str] = None
+    direccion: Optional[str] = None
+    genero: Optional[str] = None
+    talla: Optional[float] = None
+    peso: Optional[float] = None
+
+
+class SolicitarRecuperacionSchema(BaseModel):
+    email: EmailStr
+
+class CambioContrasenaSchema(BaseModel):
+    token: str = Field(..., description="Token JWT recibido por correo")
+    nueva_contrasena: str = Field(..., min_length=8, description="Nueva contraseña")
+
+class VerificarTokenSchema(BaseModel):
+    token: str
+
