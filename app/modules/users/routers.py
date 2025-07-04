@@ -28,8 +28,16 @@ from app.modules.billing.services import (
     es_plan_con_topes,
     obtener_detalle_topes
     )
-
-
+from app.modules.users.schemas import (
+    SolicitarRecuperacionSchema,
+    CambioContrasenaSchema
+)
+from app.modules.users.services import (
+    solicitar_recuperacion_contrasena_con_link,
+)
+from app.modules.users.schemas import VerificarTokenSchema
+from app.modules.users.services import verificar_token_reset_password, cambiar_contrasena_con_link
+from fastapi import BackgroundTasks
 
 router = APIRouter()
 
@@ -323,6 +331,8 @@ def actualizar_cliente(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al actualizar cliente: {str(e)}")
 
+
+
 @router.get("/cliente/id/{id_cliente}", response_model=ClienteUsuarioFull)
 def obtener_cliente_por_id_cliente(
     id_cliente: int,
@@ -341,7 +351,8 @@ def carga_masiva_clientes(
         return {"mensaje": "Carga masiva completada", "resumen": resultado}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+
 @router.put("/usuario/cliente/actualizar")
 def actualizar_datos_cliente(
     datos: ClienteUpdateIn,
@@ -361,3 +372,30 @@ def actualizar_datos_cliente(
     session.commit()
     session.refresh(cliente)
     return {"ok": True, "message": "Datos actualizados correctamente"}
+
+@router.post("/recuperar-contrasena/link")
+def solicitar_link_recuperacion(
+    datos: SolicitarRecuperacionSchema,
+    bg: BackgroundTasks,  # ← primero los sin default
+    db: Session = Depends(get_session)
+):
+    """
+    Solicita un enlace de recuperación (token temporal JWT)
+    """
+    return solicitar_recuperacion_contrasena_con_link(db, datos.email, bg)
+
+@router.post("/verificar-token")
+def verificar_token_contrasena(datos: VerificarTokenSchema):
+    return verificar_token_reset_password(datos.token)
+
+
+@router.post("/reset-password/link")
+def resetear_contrasena_con_link(
+    datos: CambioContrasenaSchema,
+    bg: BackgroundTasks,  # ✅ Sin valor por defecto
+    db: Session = Depends(get_session)  # ✅ Con valor por defecto
+):
+    """
+    Cambia la contraseña usando el token enviado por correo (válido solo si no expiró).
+    """
+    return cambiar_contrasena_con_link(db, datos.token, datos.nueva_contrasena, bg)

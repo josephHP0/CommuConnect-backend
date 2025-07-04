@@ -109,3 +109,46 @@ def send_form_email(to_email: str, file_content: bytes, filename: str, details: 
         ]
     )
     _api.send_transac_email(email)
+
+
+def send_reset_link_email(to_email: str, nombre: str, reset_url: str) -> None:
+    html = f"""
+      <h2>Recuperación de Contraseña</h2>
+      <p>Hola {nombre},</p>
+      <p>Has solicitado restablecer tu contraseña. Para continuar, haz clic en el siguiente botón:</p>
+      <p><a style="padding:10px 18px;background:#4f46e5;color:#fff;
+         border-radius:6px;text-decoration:none" href="{reset_url}">
+         Cambiar contraseña</a></p>
+      <p>Este enlace tiene una validez de 5 minutos.</p>
+      <p>Si tú no hiciste esta solicitud, puedes ignorar este mensaje.</p>
+      <br>
+      <p>El equipo de CommuConnect</p>
+    """
+
+    email = brevo.SendSmtpEmail(
+        sender={"email": EMAIL_FROM, "name": "CommuConnect"},
+        to=[{"email": to_email}],
+        subject="Recuperación de Contraseña",
+        html_content=html,
+    )
+    _api.send_transac_email(email)
+
+
+def send_password_changed_email(to_email: str, nombre: str) -> None:
+    html = f"""
+      <h2>Confirmación de Cambio de Contraseña</h2>
+      <p>Hola {nombre},</p>
+      <p>Te informamos que tu contraseña fue cambiada exitosamente.</p>
+      <p>Si tú realizaste este cambio, no necesitas hacer nada más.</p>
+      <p>Si <strong>no reconoces esta actividad</strong>, por favor comunícate inmediatamente con nuestro equipo de soporte.</p>
+      <br>
+      <p>El equipo de CommuConnect</p>
+    """
+
+    email = brevo.SendSmtpEmail(
+        sender={"email": EMAIL_FROM, "name": "CommuConnect"},
+        to=[{"email": to_email}],
+        subject="Confirmación de Cambio de Contraseña",
+        html_content=html,
+    )
+    _api.send_transac_email(email)
