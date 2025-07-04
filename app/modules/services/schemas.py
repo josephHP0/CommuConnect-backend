@@ -115,6 +115,19 @@ class SesionVirtualConDetalle(BaseModel):
     class Config:
         from_attributes = True  
 
+class SesionPresencialConDetalle(BaseModel):
+    id_sesion_presencial: int
+    id_sesion: int
+    fecha: Optional[date]
+    hora_inicio: Optional[time]
+    hora_fin: Optional[time]
+    capacidad: int                   
+    inscritos: int                 
+
+    class Config:
+        from_attributes = True
+
+
 class ProfesionalDetalleOut(BaseModel):
     nombre: str
     apellido: str

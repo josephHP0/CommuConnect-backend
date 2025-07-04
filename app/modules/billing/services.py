@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 from sqlalchemy import text
 
 from app.modules.communities.models import ClienteXComunidad, Comunidad, ComunidadXPlan
-from .schemas import ComunidadXPlanCreate, DetalleInscripcionCreate
+from .schemas import ComunidadXPlanCreate, DetalleInscripcionCreate, PlanCreate, PlanUpdate
 from datetime import datetime
 
 from app.core.enums import MetodoPago
@@ -14,18 +14,7 @@ from .models import Inscripcion, Pago, Plan, DetalleInscripcion
 
 
 def get_planes(session: Session):
-    planes = session.exec(select(Plan)).all()
-    # Solo devuelve los campos del schema PlanOut
-    return [
-        {
-            "id_plan": p.id_plan,
-            "titulo": p.titulo,
-            "descripcion": p.descripcion,
-            "topes": p.topes,
-            "precio": p.precio
-        }
-        for p in planes
-    ]
+    return session.exec(select(Plan)).all()
 
 def crear_pago_pendiente(session: Session, id_plan: int, creado_por: str):
     plan = session.get(Plan, id_plan)
@@ -223,7 +212,7 @@ def crear_detalle_inscripcion(
         fecha_registro=fecha_inicio,
         fecha_inicio=fecha_inicio,
         fecha_fin=fecha_fin,
-        topes_disponibles=plan.topes,
+        topes_disponibles=plan.topes, # type: ignore
         topes_consumidos=0,
         fecha_creacion=fecha_inicio,
         creado_por=creado_por,
@@ -357,3 +346,36 @@ def obtener_planes_no_asociados(db: Session, id_comunidad: int) -> list[Plan]:
     )
 
     return db.exec(query).all() # type: ignore
+
+def crear_plan(session: Session, plan_data: PlanCreate, creado_por: str) -> Plan:
+    plan = Plan(**plan_data.dict(), creado_por=creado_por, estado=1)
+    session.add(plan)
+    session.commit()
+    session.refresh(plan)
+    return plan
+
+def eliminar_plan_logico(session: Session, id_plan: int, modificado_por: str) -> Plan:
+    plan = session.get(Plan, id_plan)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+    plan.estado = 0  # Inactivo
+    plan.modificado_por = modificado_por
+    plan.fecha_modificacion = datetime.utcnow()
+    session.add(plan)
+    session.commit()
+    session.refresh(plan)
+    return plan
+
+def actualizar_plan(session: Session, id_plan: int, plan_data: 'PlanUpdate', modificado_por: str) -> Plan:
+    plan = session.get(Plan, id_plan)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+    # Solo actualiza los campos que vienen en la petición
+    for field, value in plan_data.dict(exclude_unset=True).items():
+        setattr(plan, field, value)
+    plan.modificado_por = modificado_por
+    plan.fecha_modificacion = datetime.utcnow()
+    session.add(plan)
+    session.commit()
+    session.refresh(plan)
+    return plan
