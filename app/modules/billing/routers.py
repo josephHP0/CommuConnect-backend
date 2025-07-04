@@ -18,6 +18,8 @@ from app.modules.billing.schemas import ValidacionMembresiaOut
 from app.modules.billing.services import tiene_topes_disponibles
 from datetime import datetime
 from sqlalchemy import desc
+from app.modules.users.dependencies import get_current_admin
+from app.modules.billing.services import obtener_detalles_suspension_completos
 
 def nombre(self):
     raise NotImplementedError
@@ -131,25 +133,24 @@ def reactivar_membresia(
     session: Session = Depends(get_session),
     current_user=Depends(get_current_user)
 ):
-    from .services import reactivar_inscripcion
-    inscripcion = reactivar_inscripcion(session, id_inscripcion, current_user.email)
+    from sqlmodel import select
+    from .services import Inscripcion
+    inscripcion = session.get(Inscripcion, id_inscripcion)
+    if not inscripcion:
+        raise HTTPException(status_code=404, detail="Inscripción no encontrada")
 
-    # Cambia el estado de la suspensión asociada (si existe) a 3 (completada)
-    suspension = session.exec(
-        select(Suspension)
-        .where(Suspension.id_inscripcion == id_inscripcion)
-        .where(Suspension.estado.in_([1, 2])) # type: ignore
-        .order_by(desc(Suspension.fecha_creacion)) # type: ignore
-    ).first()
-    if suspension:
-        suspension.estado = 3  # Completada
-        suspension.modificado_por = current_user.email
-        suspension.fecha_modificacion = datetime.utcnow()
-        session.add(suspension)
-        session.commit()
-        session.refresh(suspension)
+    inscripcion.estado = 1  # Activa
+    inscripcion.modificado_por = current_user.email
+    inscripcion.fecha_modificacion = datetime.utcnow()
+    session.add(inscripcion)
+    session.commit()
+    session.refresh(inscripcion)
+
+    # Ya no necesitamos cambiar el estado de la suspensión a "Completada"
+    # La suspensión se desactiva automáticamente cuando pasa su fecha_fin
 
     return {"ok": True, "message": "Inscripción reactivada exitosamente", "inscripcion_id": inscripcion.id_inscripcion}
+
 #Este endpoint es útil para saber rápidamente si un cliente ya está inscrito 
 #activamente en alguna comunidad. Ideal para validar antes de mostrar contenido exclusivo,
 #planes, reservas, etc.
@@ -561,3 +562,84 @@ def obtener_plan_por_id(
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
     return PlanOut.from_orm(plan)
+
+@router.get("/suspension/{id_suspension}/detalles")
+def obtener_detalles_suspension(
+    id_suspension: int,
+    current_user: dict = Depends(get_current_admin),
+    session: Session = Depends(get_session)
+):
+    """
+    Obtiene los detalles completos de una suspensión específica incluyendo:
+    - Información básica de la suspensión
+    - Estado calculado basándose en fechas
+    - Acciones disponibles para el admin
+    - Información del cliente asociado
+    """
+    # Buscar la suspensión
+    suspension = session.get(Suspension, id_suspension)
+    if not suspension:
+        raise HTTPException(status_code=404, detail="Suspensión no encontrada")
+    
+    # Obtener detalles completos con estado calculado
+    detalles = obtener_detalles_suspension_completos(suspension)
+    
+    # Obtener información adicional del cliente
+    from app.modules.users.models import Cliente, Usuario
+    cliente = session.get(Cliente, suspension.id_cliente)
+    if cliente:
+        usuario = session.get(Usuario, cliente.id_usuario)
+        if usuario:
+            detalles["cliente_info"] = {
+                "nombres": usuario.nombre,
+                "apellidos": usuario.apellido,
+                "email": usuario.email
+            }
+    
+    # Obtener información de la inscripción
+    inscripcion = session.get(Inscripcion, suspension.id_inscripcion)
+    if inscripcion:
+        from app.modules.communities.models import Comunidad
+        comunidad = session.get(Comunidad, inscripcion.id_comunidad)
+        if comunidad:
+            detalles["comunidad_info"] = {
+                "nombre": comunidad.nombre
+            }
+    
+    return detalles
+
+@router.get("/suspensiones/todas-con-estado", response_model=List[dict])
+def listar_suspensiones_con_estado_calculado(
+    current_user: dict = Depends(get_current_admin),
+    session: Session = Depends(get_session)
+):
+    """
+    Lista todas las suspensiones con su estado calculado para la tabla de administración
+    """
+    suspensiones = session.exec(select(Suspension)).all()
+    
+    resultado = []
+    for suspension in suspensiones:
+        detalles = obtener_detalles_suspension_completos(suspension)
+        
+        # Obtener información adicional para la tabla
+        from app.modules.users.models import Cliente, Usuario
+        cliente = session.get(Cliente, suspension.id_cliente)
+        if cliente:
+            usuario = session.get(Usuario, cliente.id_usuario)
+            if usuario:
+                detalles["nombres"] = usuario.nombre
+                detalles["apellidos"] = usuario.apellido
+                detalles["email"] = usuario.email
+        
+        # Obtener información de la comunidad
+        inscripcion = session.get(Inscripcion, suspension.id_inscripcion)
+        if inscripcion:
+            from app.modules.communities.models import Comunidad
+            comunidad = session.get(Comunidad, inscripcion.id_comunidad)
+            if comunidad:
+                detalles["comunidad"] = comunidad.nombre
+        
+        resultado.append(detalles)
+    
+    return resultado
