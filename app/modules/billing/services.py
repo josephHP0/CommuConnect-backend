@@ -70,6 +70,22 @@ def crear_inscripcion(
     if not id_plan and not id_pago:
         nuevo_estado = 2  # Pendiente de plan
 
+    # --- AGREGADO: función para crear la relación si no existe ---
+    def asegurar_relacion_clientexcomunidad():
+        existe = session.exec(
+            select(ClienteXComunidad).where(
+                ClienteXComunidad.id_cliente == id_cliente,
+                ClienteXComunidad.id_comunidad == id_comunidad
+            )
+        ).first()
+        if not existe:
+            relacion = ClienteXComunidad(
+                id_cliente=id_cliente,
+                id_comunidad=id_comunidad
+            )
+            session.add(relacion)
+            session.commit()
+    # ------------------------------------------------------------
 
     if inscripcion_previa:
         # Sobrescribe la inscripción pendiente
@@ -81,6 +97,7 @@ def crear_inscripcion(
         session.add(inscripcion_previa)
         session.commit()
         session.refresh(inscripcion_previa)
+        asegurar_relacion_clientexcomunidad()
         return inscripcion_previa
     elif inscripcion_pagada:
         # Crea nueva inscripción con el estado correspondiente
@@ -96,6 +113,7 @@ def crear_inscripcion(
         session.add(inscripcion)
         session.commit()
         session.refresh(inscripcion)
+        asegurar_relacion_clientexcomunidad()
         return inscripcion
     else:
         # No hay inscripción previa, crea nueva
@@ -115,6 +133,7 @@ def crear_inscripcion(
         session.add(inscripcion)
         session.commit()
         session.refresh(inscripcion)
+        asegurar_relacion_clientexcomunidad()
         return inscripcion
 
 def pagar_pendiente(
