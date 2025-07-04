@@ -2,13 +2,13 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, UploadFile
 from sqlmodel import Session, select, func
 from app.modules.services.models import  Servicio, Profesional
-from app.modules.reservations.models import SesionVirtual,Sesion, Reserva  
+from app.modules.reservations.models import SesionVirtual,Sesion, Reserva,SesionPresencial  
 from typing import List, Optional
 from app.modules.geography.models import Distrito  # Modelo de geografía
 from app.modules.services.models import Local, Profesional      # Modelo Local dentro de services
 from app.modules.services.schemas import DistritoOut, ServicioCreate, ServicioRead, ServicioUpdate  # Esquema de salida (DTO)
 import base64
-from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut, SesionVirtualConDetalle
+from app.modules.services.schemas import ProfesionalCreate, ProfesionalOut, SesionVirtualConDetalle, SesionPresencialConDetalle
 import pandas as pd
 from .schemas import DetalleSesionVirtualResponse, LocalCreate, ProfesionalDetalleOut, InscritoDetalleOut
 from app.modules.users.models import Cliente, Usuario
@@ -299,6 +299,41 @@ def obtener_detalle_sesion_virtual(id_sesion_virtual: int, db: Session) -> Detal
         profesional=profesional_out,
         inscritos=inscritos_out
     )
+
+
+def obtener_sesiones_presenciales_por_local(
+    db: Session, id_local: int
+) -> List[SesionPresencialConDetalle]:
+    sesiones_presenciales = db.exec(
+        select(SesionPresencial).where(SesionPresencial.id_local == id_local)
+    ).all()
+
+    resultado = []
+
+    for sp in sesiones_presenciales:
+        sesion = db.exec(
+            select(Sesion).where(Sesion.id_sesion == sp.id_sesion)
+        ).first()
+
+        if sesion:
+            inscritos_resultado = db.exec(
+                select(func.count(Reserva.id_reserva)).where(Reserva.id_sesion == sesion.id_sesion)
+            ).one()
+
+            inscritos = inscritos_resultado[0] if isinstance(inscritos_resultado, tuple) else inscritos_resultado
+
+            resultado.append(SesionPresencialConDetalle(
+                id_sesion_presencial=sp.id_sesion_presencial,
+                id_sesion=sesion.id_sesion,
+                fecha=sesion.inicio.date() if sesion.inicio else None,
+                hora_inicio=sesion.inicio.time() if sesion.inicio else None,
+                hora_fin=sesion.fin.time() if sesion.fin else None,
+                capacidad=sp.capacidad,                     # ✅ nuevo campo
+                inscritos=inscritos
+            ))
+
+    return resultado
+
 
 def get_sesion_virtual_con_profesional(id_sesion_virtual: int, db: Session):
     sv = db.get(SesionVirtual, id_sesion_virtual)

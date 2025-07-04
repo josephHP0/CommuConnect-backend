@@ -16,8 +16,8 @@ from app.modules.services.schemas import LocalOut
 from app.modules.users.models import Usuario
 from app.modules.communities.services import obtener_servicios_con_imagen_base64
 from ..services.services import crear_local, procesar_archivo_profesionales
-from app.modules.services.services import obtener_sesiones_virtuales_por_profesional
-from app.modules.services.schemas import SesionVirtualConDetalle
+from app.modules.services.services import obtener_sesiones_virtuales_por_profesional, obtener_sesiones_presenciales_por_local
+from app.modules.services.schemas import SesionVirtualConDetalle,SesionPresencialConDetalle
 from app.modules.services.services import obtener_detalle_sesion_virtual
 from app.modules.services.schemas import DetalleSesionVirtualResponse
 
@@ -408,6 +408,16 @@ def listar_sesiones_virtuales_de_profesional(
     current_user: Usuario = Depends(get_current_user)  # solo para autenticación básica
 ):
     return obtener_sesiones_virtuales_por_profesional(db, id_profesional)
+
+
+@router.get("/locales/{id_local}/sesiones-presenciales", response_model=List[SesionPresencialConDetalle])
+def listar_sesiones_presenciales_de_local(
+    id_local: int,
+    db: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)  # Para autenticación si la necesitas
+):
+    return obtener_sesiones_presenciales_por_local(db, id_local)
+
 
 
 @router.get("/sesiones-virtuales/{id}/detalle", response_model=DetalleSesionVirtualResponse)

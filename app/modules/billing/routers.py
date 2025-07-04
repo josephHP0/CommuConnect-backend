@@ -5,10 +5,11 @@ from sqlmodel import Session, select
 from app.core.db import get_session
 from app.modules.auth.dependencies import get_current_cliente_id, get_current_user
 from app.modules.billing.models import DetalleInscripcion, Inscripcion, Pago, Plan, Suspension
-from app.modules.communities.models import ComunidadXPlan
-from app.modules.users.models import Usuario
-from .services import agregar_plan_a_comunidad_serv, crear_inscripcion, crear_pago_pendiente, get_planes, obtener_planes_no_asociados, obtener_planes_por_comunidad, pagar_pendiente
-from .schemas import ComunidadXPlanCreate, DetalleInscripcionOut, DetalleInscripcionPagoOut, InscripcionResumenOut, PlanOut, InfoInscripcionOut, SuspensionEstadoOut
+from app.modules.communities.models import Comunidad, ComunidadXPlan
+from app.modules.users.models import Cliente, Usuario
+from utils.email_brevo import send_membership_activated_email, send_membership_cancelled_email, send_suspension_accepted_email
+from .services import actualizar_plan, agregar_plan_a_comunidad_serv, crear_inscripcion, crear_pago_pendiente, crear_plan, eliminar_plan_logico, get_planes, obtener_planes_no_asociados, obtener_planes_por_comunidad, pagar_pendiente
+from .schemas import ComunidadXPlanCreate, DetalleInscripcionOut, DetalleInscripcionPagoOut, InscripcionResumenOut, PlanOut, InfoInscripcionOut, SuspensionEstadoOut, PlanCreate, PlanUpdate
 from typing import List, Optional
 from app.modules.billing.services import tiene_membresia_asociada
 from app.modules.billing.schemas import MembresiaAsociadaOut
@@ -78,6 +79,39 @@ def pagar_comunidad(
         id_comunidad,
         current_user.email
     )
+
+    cliente = session.get(Cliente, id_cliente)
+    usuario = session.get(Usuario, cliente.id_usuario) if cliente else None
+
+    inscripcion = session.exec(
+        select(Inscripcion)
+        .where(Inscripcion.id_cliente == id_cliente)
+        .where(Inscripcion.id_comunidad == id_comunidad)
+    ).first()
+
+    plan = session.get(Plan, inscripcion.id_plan) if inscripcion else None
+    comunidad = session.get(Comunidad, id_comunidad)
+    detalle = session.exec(
+        select(DetalleInscripcion).where(
+            DetalleInscripcion.id_inscripcion == inscripcion.id_inscripcion
+        )
+    ).first() if inscripcion else None
+
+    if usuario and plan and comunidad and detalle:
+        details = {
+            "nombre_usuario": usuario.nombre if hasattr(usuario, "nombre") else usuario.email,
+            "nombre_plan": plan.titulo,
+            "nombre_comunidad": comunidad.nombre,
+            "fecha_inicio": detalle.fecha_inicio.strftime("%Y-%m-%d") if detalle.fecha_inicio else "",
+            "fecha_fin": detalle.fecha_fin.strftime("%Y-%m-%d") if detalle.fecha_fin else "",
+            "precio": float(plan.precio),
+        }
+        try:
+            send_membership_activated_email(usuario.email, details)
+            print("Correo de membresía activa enviado a:", usuario.email)
+        except Exception as e:
+            print("Error enviando correo de membresía activa:", e)
+
     return {"ok": True, "message": "Pago realizado exitosamente"}
 
 # Nuevo endpoint para congelar membresía (inscripción)
@@ -196,6 +230,33 @@ def cancelar_membresia(
     session.add(inscripcion)
     session.commit()
     session.refresh(inscripcion)
+
+    # Obtener datos para el correo
+    cliente = session.get(Cliente, inscripcion.id_cliente)
+    usuario = session.get(Usuario, cliente.id_usuario) if cliente else None
+    plan = session.get(Plan, inscripcion.id_plan)
+    comunidad = session.get(Comunidad, inscripcion.id_comunidad)
+    detalle = session.exec(
+        select(DetalleInscripcion).where(
+            DetalleInscripcion.id_inscripcion == inscripcion.id_inscripcion
+        )
+    ).first()
+
+    if usuario and plan and comunidad and detalle:
+        details = {
+            "nombre_usuario": usuario.nombre if hasattr(usuario, "nombre") else usuario.email,
+            "nombre_plan": plan.titulo,
+            "nombre_comunidad": comunidad.nombre,
+            "fecha_inicio": detalle.fecha_inicio.strftime("%Y-%m-%d") if detalle.fecha_inicio else "",
+            "fecha_cancelacion": inscripcion.fecha_modificacion.strftime("%Y-%m-%d") if inscripcion.fecha_modificacion else "",
+        }
+        try:
+            send_membership_cancelled_email(usuario.email, details)
+            print("Correo de cancelación de membresía enviado a:", usuario.email)
+        except Exception as e:
+            print("Error enviando correo de cancelación de membresía:", e)
+
+
     return {"ok": True, "message": "Membresía cancelada, ahora está pendiente de pago", "inscripcion_id": inscripcion.id_inscripcion}
 
 from app.modules.billing.schemas import InfoInscripcionOut
@@ -388,6 +449,26 @@ def aceptar_suspension(
     session.add(inscripcion)
 
     session.commit()
+
+    # ... después de session.commit()
+    print("Antes de buscar usuario")
+    cliente = session.get(Cliente, inscripcion.id_cliente)
+    usuario = session.get(Usuario, cliente.id_usuario) if cliente else None
+    print("Después de buscar usuario:", usuario)
+    if usuario:
+        details = {
+            "nombre_usuario": usuario.nombre if hasattr(usuario, "nombre") else usuario.email,
+            "motivo": suspension.motivo,
+            "fecha_inicio": suspension.fecha_inicio.strftime("%Y-%m-%d"),
+            "fecha_fin": suspension.fecha_fin.strftime("%Y-%m-%d"),
+        }
+        print("Intentando enviar correo a:", usuario.email)
+        try:
+            send_suspension_accepted_email(usuario.email, details)
+            print("Correo enviado exitosamente a:", usuario.email)
+        except Exception as e:
+            print("Error enviando correo:", e)
+
     return {"ok": True, "message": "Suspensión aceptada y membresía congelada exitosamente", "id_suspension": suspension.id_suspension}
 
 # Endpoint para rechazar una suspensión de membresía desde el administrador
@@ -441,3 +522,42 @@ def listar_todas_suspensiones(
             estado=estado_map.get(s.estado, "Desconocido")
         ))
     return resultado
+
+
+@router.post("/planes", response_model=PlanOut)
+def crear_nuevo_plan(
+    plan: PlanCreate,
+    session: Session = Depends(get_session),
+    current_user=Depends(get_current_user)
+):
+    nuevo_plan = crear_plan(session, plan, current_user.email)
+    return PlanOut.from_orm(nuevo_plan)
+
+@router.delete("/planes/{id_plan}", response_model=PlanOut)
+def eliminar_plan(
+    id_plan: int,
+    session: Session = Depends(get_session),
+    current_user=Depends(get_current_user)
+):
+    plan = eliminar_plan_logico(session, id_plan, current_user.email)
+    return PlanOut.from_orm(plan)
+
+@router.put("/planes/{id_plan}", response_model=PlanOut)
+def actualizar_plan_endpoint(
+    id_plan: int,
+    plan: PlanUpdate,
+    session: Session = Depends(get_session),
+    current_user=Depends(get_current_user)
+):
+    plan_actualizado = actualizar_plan(session, id_plan, plan, current_user.email)
+    return PlanOut.from_orm(plan_actualizado)
+
+@router.get("/planes/{id_plan}", response_model=PlanOut)
+def obtener_plan_por_id(
+    id_plan: int,
+    session: Session = Depends(get_session)
+):
+    plan = session.get(Plan, id_plan)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+    return PlanOut.from_orm(plan)
