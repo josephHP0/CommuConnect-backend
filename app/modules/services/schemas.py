@@ -84,12 +84,6 @@ class ServicioUpdate(BaseModel):
     descripcion: Optional[str]
     modalidad: Optional[ModalidadServicio]  # Ya definido antes
 
-class LocalOut(BaseModel):
-    id_local: int
-    nombre: str
-    direccion_detallada: Optional[str]
-    link: Optional[str]
-    responsable: Optional[str]
 
 class ProfesionalOut(BaseModel):
     id_profesional: int
@@ -139,6 +133,30 @@ class InscritoDetalleOut(BaseModel):
     apellido: str
     comunidad: str
     entrego_archivo: bool
+
+
+
+
+class InscritoPresencialDetalleOut(BaseModel):
+    nombre: str
+    apellido: str
+    comunidad: str
+
+
+class LocalDetalleOut(BaseModel):
+    nombre: Optional[str]
+    direccion_detallada: Optional[str]
+    responsable: Optional[str]
+
+class DetalleSesionPresencialResponse(BaseModel):
+    id_sesion_presencial: int
+    descripcion: Optional[str]
+    fecha: Optional[date]
+    hora_inicio: Optional[time]
+    hora_fin: Optional[time]
+    local: LocalDetalleOut
+    inscritos: List[InscritoPresencialDetalleOut]
+
 
 
 class DetalleSesionVirtualResponse(BaseModel):

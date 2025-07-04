@@ -32,7 +32,7 @@ from app.modules.users.dependencies import get_current_admin
 from app.modules.reservations.services import crear_reserva_virtual_con_validaciones
 from app.modules.reservations.services import obtener_resumen_reserva_virtual
 from app.modules.reservations.schemas import ReservaVirtualSummary
-
+import traceback
 router = APIRouter()
 
 @router.get(
@@ -235,11 +235,13 @@ def create_reserva_virtual(
         session.rollback()
         raise
 
-    except Exception:
+    except Exception as e:
         session.rollback()
+        print("❌ Error inesperado en create_reserva_virtual:")
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error interno al crear la reserva."
+            detail=f"Error interno al crear la reserva: {str(e)}"
         )
 
 
