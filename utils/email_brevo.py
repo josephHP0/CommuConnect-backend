@@ -128,3 +128,65 @@ def send_reservation_cancel_email(to_email: str, details: dict) -> None:
         html_content=html,
     )
     _api.send_transac_email(email)
+
+def send_suspension_accepted_email(to_email: str, details: dict) -> None:
+    html = f"""
+        <h2>¡Solicitud de suspensión aceptada!</h2>
+        <p>Hola {details.get('nombre_usuario', '')},</p>
+        <p>Tu solicitud de suspensión de membresía ha sido <strong>aceptada</strong>.</p>
+        <ul>
+            <li><strong>Motivo:</strong> {details.get('motivo', '')}</li>
+            <li><strong>Fecha de inicio:</strong> {details.get('fecha_inicio', '')}</li>
+            <li><strong>Fecha de fin:</strong> {details.get('fecha_fin', '')}</li>
+        </ul>
+        <p>Durante este periodo, tu membresía estará congelada.</p>
+        <p>Gracias por confiar en CommuConnect.</p>
+    """
+    email = brevo.SendSmtpEmail(
+        sender={"email": EMAIL_FROM, "name": "CommuConnect"},
+        to=[{"email": to_email}],
+        subject="Tu suspensión de membresía ha sido aceptada",
+        html_content=html,
+    )
+    _api.send_transac_email(email)
+
+def send_membership_activated_email(to_email: str, details: dict) -> None:
+    html = f"""
+        <h2>¡Membresía activada!</h2>
+        <p>Hola {details.get('nombre_usuario', '')},</p>
+        <p>Tu membresía <strong>{details.get('nombre_plan', '')}</strong> en la comunidad <strong>{details.get('nombre_comunidad', '')}</strong> está <strong>activa y lista para usar</strong>.</p>
+        <ul>
+            <li><strong>Fecha de inicio:</strong> {details.get('fecha_inicio', '')}</li>
+            <li><strong>Fecha de fin:</strong> {details.get('fecha_fin', '')}</li>
+            <li><strong>Precio:</strong> S/ {details.get('precio', '')}</li>
+        </ul>
+        <p>¡Disfruta de todos los beneficios de tu membresía!</p>
+        <p>El equipo de CommuConnect</p>
+    """
+    email = brevo.SendSmtpEmail(
+        sender={"email": EMAIL_FROM, "name": "CommuConnect"},
+        to=[{"email": to_email}],
+        subject="¡Tu membresía está activa!",
+        html_content=html,
+    )
+    _api.send_transac_email(email)
+
+def send_membership_cancelled_email(to_email: str, details: dict) -> None:
+    html = f"""
+        <h2>Membresía cancelada</h2>
+        <p>Hola {details.get('nombre_usuario', '')},</p>
+        <p>Te informamos que tu membresía <strong>{details.get('nombre_plan', '')}</strong> en la comunidad <strong>{details.get('nombre_comunidad', '')}</strong> ha sido <strong>cancelada</strong>.</p>
+        <ul>
+            <li><strong>Fecha de inicio:</strong> {details.get('fecha_inicio', '')}</li>
+            <li><strong>Fecha de cancelación:</strong> {details.get('fecha_cancelacion', '')}</li>
+        </ul>
+        <p>Si tienes dudas o deseas reactivar tu membresía, contáctanos.</p>
+        <p>El equipo de CommuConnect</p>
+    """
+    email = brevo.SendSmtpEmail(
+        sender={"email": EMAIL_FROM, "name": "CommuConnect"},
+        to=[{"email": to_email}],
+        subject="Tu membresía ha sido cancelada",
+        html_content=html,
+    )
+    _api.send_transac_email(email)
