@@ -9,6 +9,7 @@ from app.core.security import hash_password, verify_password, create_access_toke
 from app.core.db import engine, get_session
 from app.modules.auth.services import pwd_context, hash_password
 from app.core.enums import TipoUsuario
+from app.modules.users.models import Cliente
 
 router = APIRouter()
 
@@ -20,14 +21,23 @@ def login(data: LoginRequest):
             raise HTTPException(status_code=401, detail="Credenciales inválidas")
         
         token = create_access_token(str(user.id_usuario))
-        
-        # Manejo robusto del tipo de usuario (Enum vs str)
         user_rol = user.tipo.value if isinstance(user.tipo, TipoUsuario) else user.tipo
-        
-        # Construir la respuesta usando el modelo Pydantic explícitamente
-        response_data = TokenResponse(access_token=token, user_rol=user_rol)
-        
-        return response_data
+
+        # ✅ Buscar al cliente vinculado al usuario
+        cliente = session.exec(
+            select(Cliente).where(Cliente.id_usuario == user.id_usuario)
+        ).first()
+
+        if not cliente:
+            raise HTTPException(status_code=404, detail="Cliente no encontrado")
+
+        # ✅ Responder incluyendo el id_cliente
+        return TokenResponse(
+            access_token=token,
+            token_type="bearer",
+            user_rol=user_rol,
+            id_cliente=cliente.id_cliente  # type: ignore
+        )
 
 @router.get("/validar-token")
 def validar_token(current_user: Usuario = Depends(get_current_user)):
