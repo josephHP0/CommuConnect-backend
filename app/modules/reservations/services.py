@@ -1,6 +1,6 @@
 from datetime import date, datetime, time, timedelta, timezone
 from typing import List, Optional
-from sqlmodel import Session, select
+from sqlmodel import Session, select, update
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.exc import IntegrityError
@@ -431,8 +431,6 @@ def obtener_url_archivo_virtual(session: Session, id_sesion: int) -> str | None:
         select(SesionVirtual).where(SesionVirtual.id_sesion == id_sesion)
     ).first()
     return sv.url_archivo if sv else None
-
-
 def crear_reserva_virtual_con_validaciones(
     session: Session,
     id_sesion: int,
@@ -440,27 +438,43 @@ def crear_reserva_virtual_con_validaciones(
     usuario_id: int,
     id_comunidad: int
 ) -> Reserva:
-    # aquí abrimos la transacción exterior
-    with session.begin():
-        # bloque para el SAVEPOINT
-        with session.begin_nested():
-            sesion = obtener_sesion_bloqueada(session, id_sesion)
-            validar_unicidad_virtual(session, sesion)
-            validar_cliente_sin_conflicto(session, cliente_id, sesion, id_comunidad)
+    detalle = None
+    reserva = None
 
-            inscripcion = obtener_inscripcion_activa(session, cliente_id, id_comunidad)
-            plan = session.exec(
-                select(Plan).where(Plan.id_plan == inscripcion.id_plan)
-            ).one_or_none()
-            if not plan:
-                raise HTTPException(500, "El plan asociado a la inscripción no existe.")
+    # SAVEPOINT para capturar errores sin afectar toda la transacción
+    with session.begin_nested():
+        sesion = obtener_sesion_bloqueada(session, id_sesion)  # ← usa FOR UPDATE
+        validar_unicidad_virtual(session, sesion)
+        validar_cliente_sin_conflicto(session, cliente_id, sesion, id_comunidad)
 
-            detalle = None
-            if es_plan_con_topes(plan):
-                detalle = obtener_detalle_topes_bloqueado(session, inscripcion.id_inscripcion)
-                validar_topes_disponibles(detalle)
+        inscripcion = obtener_inscripcion_activa(session, cliente_id, id_comunidad)
+        if not inscripcion:
+            raise HTTPException(404, "No se encontró inscripción activa para este cliente en la comunidad.")
 
-        # fuera del SAVEPOINT, pero dentro de la transacción padre:
+        plan = session.exec(
+            select(Plan).where(Plan.id_plan == inscripcion.id_plan)
+        ).one_or_none()
+        if not plan:
+            raise HTTPException(500, "El plan asociado a la inscripción no existe.")
+
+        if es_plan_con_topes(plan):
+            detalle = obtener_detalle_topes_bloqueado(session, inscripcion.id_inscripcion)
+            if detalle is None:
+                raise HTTPException(500, "No se encontró detalle de topes.")
+            validar_topes_disponibles(detalle)
+
+            # ✅ Actualiza los topes directamente
+            session.exec(
+                update(DetalleInscripcion)
+                .where(DetalleInscripcion.id_registros_inscripcion == detalle.id_registros_inscripcion)
+                .values(
+                    topes_disponibles=detalle.topes_disponibles - 1,
+                    topes_consumidos=detalle.topes_consumidos + 1
+                )
+            )
+            session.flush()  # 🔄 Fuerza escritura inmediata dentro de la transacción
+
+        # ✅ Crear reserva
         reserva = crear_reserva(
             session=session,
             sesion=sesion,
@@ -469,15 +483,16 @@ def crear_reserva_virtual_con_validaciones(
             usuario_id=usuario_id
         )
 
-        if detalle:
-            # descontamos los topes en la entidad
-            detalle.topes_disponibles  -= 1
-            detalle.topes_consumidos   += 1
-            session.add(detalle)         # asegurar que SQLModel lo rastrea
-            session.flush()             # enviar UPDATE al motor
+    # Logs de depuración (útiles si hay varios planes)
+    print(f"🔍 Cliente ID: {cliente_id}, Comunidad ID: {id_comunidad}")
+    print(f"Reserva ID: {reserva.id_reserva} creada correctamente.")
+    print(f"Detalle topes usado: ID {detalle.id_registros_inscripcion if detalle else '—'}")
 
-        # al salir del `with session.begin():` se ejecuta el COMMIT
-        return reserva
+    return reserva
+
+
+
+
 
 def obtener_sesion_bloqueada(session: Session, id_sesion: int) -> Sesion:
     sesion = session.exec(
@@ -536,6 +551,7 @@ def obtener_detalle_topes_bloqueado(session: Session, id_inscripcion: int) -> De
             status_code=500,
             detail="No se encontró el detalle de inscripción para topes."
         )
+    print(f"📌 Estado antes de commit → disponibles: {detalle.topes_disponibles}, consumidos: {detalle.topes_consumidos}")
     return detalle
 
 
@@ -1074,6 +1090,13 @@ def procesar_fila_sesion_virtual(datos: SesionCargaMasiva, db: Session, creado_p
     ).first()
     if not profesional:
         raise ValueError(f"Profesional con ID {datos.id_profesional} no existe.")
+    
+    # Validar que el profesional esté vinculado al mismo servicio
+    if profesional.id_servicio != datos.id_servicio:
+        raise ValueError(
+            f"El profesional {datos.id_profesional} está asociado al servicio {profesional.id_servicio}, "
+            f"pero se está intentando asignar a una sesión del servicio {datos.id_servicio}."
+        )
 
     # Validaciones de conflicto lógico
     validar_sesion_duplicada(db, datos)
