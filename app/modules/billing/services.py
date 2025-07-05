@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import HTTPException
 from sqlmodel import Session, select
 from sqlalchemy import text
@@ -398,3 +398,164 @@ def actualizar_plan(session: Session, id_plan: int, plan_data: 'PlanUpdate', mod
     session.commit()
     session.refresh(plan)
     return plan
+
+def calcular_estado_suspension(suspension) -> Dict[str, Any]:
+    """
+    Calcula el estado visual de una suspensión EN TIEMPO REAL basándose en:
+    - Estado de la base de datos
+    - Fechas de inicio y fin
+    - Fecha actual
+    
+    Returns:
+        Dict con estado_visual, color, y acciones_disponibles
+    """
+    ahora = datetime.now()
+    
+    estado_bd = suspension.estado
+    fecha_inicio = suspension.fecha_inicio
+    fecha_fin = suspension.fecha_fin
+    
+    # Estados para solicitudes PENDIENTES (estado_bd == 2)
+    if estado_bd == 2:  # Pendiente - aquí importa la fecha_inicio
+        if not fecha_inicio:
+            return {
+                "estado_visual": "Pendiente",
+                "color": "warning",
+                "acciones_disponibles": ["ver", "aprobar", "rechazar"],
+                "puede_modificar": True
+            }
+        
+        # Calcular días hasta el inicio de la suspensión
+        dias_hasta_inicio = (fecha_inicio - ahora).days
+        
+        # La fecha de inicio ya pasó - admin no decidió a tiempo
+        if ahora > fecha_inicio:
+            return {
+                "estado_visual": "Vencida",
+                "color": "danger",
+                "acciones_disponibles": ["ver"],
+                "puede_modificar": False,
+                "mensaje": "La fecha de inicio ya pasó sin decisión del admin"
+            }
+        
+        # Faltan 7 días o menos para el inicio - URGENTE
+        elif dias_hasta_inicio <= 7:
+            return {
+                "estado_visual": "Por vencer",
+                "color": "warning",
+                "acciones_disponibles": ["ver", "aprobar", "rechazar"],
+                "puede_modificar": True,
+                "dias_hasta_inicio": dias_hasta_inicio,
+                "mensaje": f"Debe decidir en {dias_hasta_inicio} días"
+            }
+        
+        # Tiempo suficiente para decidir
+        else:
+            return {
+                "estado_visual": "Pendiente",
+                "color": "info",
+                "acciones_disponibles": ["ver", "aprobar", "rechazar"],
+                "puede_modificar": True,
+                "dias_hasta_inicio": dias_hasta_inicio
+            }
+    
+    # Estados para solicitudes RECHAZADAS (estado_bd == 0)
+    elif estado_bd == 0:  # Rechazada
+        return {
+            "estado_visual": "Rechazada", 
+            "color": "danger",
+            "acciones_disponibles": ["ver"],
+            "puede_modificar": False
+        }
+    
+    # Estados para solicitudes ACEPTADAS (estado_bd == 1)
+    elif estado_bd == 1:  # Aceptada - calcular basándose en fechas de la suspensión activa
+        if not fecha_inicio or not fecha_fin:
+            return {
+                "estado_visual": "Aceptada",
+                "color": "success",
+                "acciones_disponibles": ["ver"],
+                "puede_modificar": False
+            }
+        
+        # Calcular días hasta el fin de la suspensión
+        dias_hasta_fin = (fecha_fin - ahora).days
+        
+        # Suspensión aún no ha comenzado (programada para el futuro)
+        if ahora < fecha_inicio:
+            dias_hasta_inicio = (fecha_inicio - ahora).days
+            return {
+                "estado_visual": "Programada",
+                "color": "info",
+                "acciones_disponibles": ["ver"],
+                "puede_modificar": False,
+                "dias_hasta_inicio": dias_hasta_inicio,
+                "mensaje": f"Comenzará en {dias_hasta_inicio} días"
+            }
+        
+        # Suspensión ya terminó
+        elif ahora > fecha_fin:
+            return {
+                "estado_visual": "Completada",
+                "color": "secondary",
+                "acciones_disponibles": ["ver"],
+                "puede_modificar": False,
+                "mensaje": "La suspensión ya terminó"
+            }
+        
+        # Suspensión está por terminar (7 días o menos)
+        elif dias_hasta_fin <= 7:
+            return {
+                "estado_visual": "Por terminar",
+                "color": "warning",
+                "acciones_disponibles": ["ver"],
+                "puede_modificar": False,
+                "dias_restantes": dias_hasta_fin,
+                "mensaje": f"Termina en {dias_hasta_fin} días"
+            }
+        
+        # Suspensión activa normal
+        else:
+            return {
+                "estado_visual": "En curso",
+                "color": "success",
+                "acciones_disponibles": ["ver"],
+                "puede_modificar": False,
+                "dias_restantes": dias_hasta_fin
+            }
+    
+    # Estado desconocido
+    else:
+        return {
+            "estado_visual": "Desconocido",
+            "color": "secondary",
+            "acciones_disponibles": ["ver"],
+            "puede_modificar": False
+        }
+
+def obtener_detalles_suspension_completos(suspension):
+    """
+    Obtiene los detalles completos de una suspensión incluyendo estado calculado
+    """
+    estado_info = calcular_estado_suspension(suspension)
+    
+    return {
+        "id_suspension": suspension.id_suspension,
+        "id_cliente": suspension.id_cliente,
+        "id_inscripcion": suspension.id_inscripcion,
+        "motivo": suspension.motivo,
+        "fecha_inicio": suspension.fecha_inicio,
+        "fecha_fin": suspension.fecha_fin,
+        "archivo": suspension.archivo,
+        "fecha_creacion": suspension.fecha_creacion,
+        "creado_por": suspension.creado_por,
+        "fecha_modificacion": suspension.fecha_modificacion,
+        "modificado_por": suspension.modificado_por,
+        "estado_bd": suspension.estado,
+        "estado_visual": estado_info["estado_visual"],
+        "color": estado_info["color"],
+        "acciones_disponibles": estado_info["acciones_disponibles"],
+        "puede_modificar": estado_info["puede_modificar"],
+        "dias_restantes": estado_info.get("dias_restantes"),
+        "mensaje": estado_info.get("mensaje")
+    }

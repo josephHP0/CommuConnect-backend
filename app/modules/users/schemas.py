@@ -67,22 +67,16 @@ class AdministradorRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class ClienteUpdate(BaseModel):
-    nombre: Optional[str]
-    apellido: Optional[str]
-    email: Optional[str]  # <-- Añadido para permitir cambio de contraseña
-    password: Optional[str]
-    tipo_documento: Optional[str]
-    num_doc: Optional[str]
-    numero_telefono: Optional[str]
-    id_departamento: Optional[int]
-    id_distrito: Optional[int]
-    direccion: Optional[str]
-    fecha_nac: Optional[date]
-    genero: Optional[str]
-    talla: Optional[float]
-    peso: Optional[float]
+    numero_telefono: Optional[str] = None
+    id_departamento: Optional[int] = None
+    id_distrito: Optional[int] = None
+    direccion: Optional[str] = None
+    genero: Optional[str] = None
+    talla: Optional[float] = None
+    peso: Optional[float] = None
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class ClienteInfo(BaseModel):
     id_cliente: int
@@ -145,10 +139,13 @@ class ClienteUpdateIn(BaseModel):
     numero_telefono: Optional[str] = None
     departamento_nombre: Optional[str] = None
     distrito_nombre: Optional[str] = None
+    id_departamento: Optional[int] = None  # ← Añadir esto
+    id_distrito: Optional[int] = None      # ← Y esto
     direccion: Optional[str] = None
     genero: Optional[str] = None
     talla: Optional[float] = None
     peso: Optional[float] = None
+
 
 
 class SolicitarRecuperacionSchema(BaseModel):
