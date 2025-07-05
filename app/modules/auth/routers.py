@@ -12,7 +12,7 @@ from app.core.enums import TipoUsuario
 from app.modules.users.models import Cliente
 
 router = APIRouter()
-
+'''
 @router.post("/login", response_model=TokenResponse)
 def login(data: LoginRequest):
     with Session(engine) as session:
@@ -38,6 +38,39 @@ def login(data: LoginRequest):
             user_rol=user_rol,
             id_cliente=cliente.id_cliente  # type: ignore
         )
+'''
+
+@router.post("/login", response_model=TokenResponse)
+def login(data: LoginRequest):
+    with Session(engine) as session:
+        user = session.exec(select(Usuario).where(Usuario.email == data.email)).first()
+        if not user or not verify_password(data.password, user.password):
+            raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        
+        token = create_access_token(str(user.id_usuario))
+        user_rol = user.tipo.value if isinstance(user.tipo, TipoUsuario) else user.tipo
+
+        if user_rol == "Cliente":
+            cliente = session.exec(
+                select(Cliente).where(Cliente.id_usuario == user.id_usuario)
+            ).first()
+            if not cliente:
+                raise HTTPException(status_code=404, detail="Cliente no encontrado")
+            
+            return TokenResponse(
+                access_token=token,
+                token_type="bearer",
+                user_rol=user_rol,
+                id_cliente=cliente.id_cliente
+            )
+        else:
+            # No incluir id_cliente si no es cliente
+            return TokenResponse(
+                access_token=token,
+                token_type="bearer",
+                user_rol=user_rol
+            )
+
 
 @router.get("/validar-token")
 def validar_token(current_user: Usuario = Depends(get_current_user)):
