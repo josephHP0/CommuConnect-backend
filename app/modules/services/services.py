@@ -109,13 +109,26 @@ def crear_servicio(
     db.commit()
     db.refresh(nuevo_servicio)
     return nuevo_servicio
-
+'''
 def eliminar_servicio(db: Session, id_servicio: int, usuario: str = "admin"):
     servicio = db.get(Servicio, id_servicio)
     if not servicio:
         raise HTTPException(status_code=404, detail="Servicio no encontrado")
 
     servicio.estado = False
+    servicio.fecha_modificacion = datetime.now(timezone.utc)
+    servicio.modificado_por = usuario
+
+    db.add(servicio)
+    db.commit()
+'''
+def eliminar_servicio(db: Session, id_servicio: int, usuario: str = "admin"):
+    servicio = db.get(Servicio, id_servicio)
+    if not servicio:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+
+    # Cambiar estado: True → False, False → True
+    servicio.estado = not servicio.estado
     servicio.fecha_modificacion = datetime.now(timezone.utc)
     servicio.modificado_por = usuario
 
