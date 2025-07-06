@@ -399,8 +399,9 @@ def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str)
 
 """sercies cambio de contraseña"""
 RESET_LINK_EXPIRATION_MINUTES = 5
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")
-FRONTEND_RESET_URL = f"{FRONTEND_URL}/#/autenticacion/reset-password"
+FRONTEND_RESET_URL = "http://localhost:4200/autenticacion/reset-password"
+
+
 
 def solicitar_recuperacion_contrasena_con_link(db: Session, email: str, bg: BackgroundTasks) -> dict:
     """
