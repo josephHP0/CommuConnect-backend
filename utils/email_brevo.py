@@ -120,10 +120,14 @@ def send_reset_link_email(to_email: str, nombre: str, reset_url: str) -> None:
          border-radius:6px;text-decoration:none" href="{reset_url}">
          Cambiar contraseña</a></p>
       <p>Este enlace tiene una validez de 5 minutos.</p>
+      <p>Si el botón no funciona, también puedes copiar y pegar este enlace en tu navegador:</p>
+      <p><code>{reset_url}</code></p>
       <p>Si tú no hiciste esta solicitud, puedes ignorar este mensaje.</p>
       <br>
       <p>El equipo de CommuConnect</p>
     """
+    ...
+
 
     email = brevo.SendSmtpEmail(
         sender={"email": EMAIL_FROM, "name": "CommuConnect"},

@@ -122,6 +122,7 @@ class ListaReservasComunidadResponse(BaseModel):
 
 class ReservaDetailScreenResponse(BaseModel):
     id_reserva: int
+    id_sesion: int
     nombre_servicio: str
     fecha: Optional[date] = None
     hora_inicio: Optional[time] = None
