@@ -32,6 +32,8 @@ from app.modules.billing.models import Inscripcion, Plan
 from typing import Tuple, Optional
 
 
+
+
 def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_comunidad: int, fecha: date):
     end_date = fecha + timedelta(days=7)
 
@@ -345,6 +347,18 @@ def validar_cliente_sin_conflicto(
     inicio_nueva = sesion_actual.inicio
     fin_nueva = sesion_actual.fin
 
+    print("🟡 VALIDANDO CONFLICTO DE SESIONES")
+    print(f"Cliente ID: {cliente_id}")
+    print(f"Comunidad ID: {id_comunidad}")
+    print(f"Inicio nueva sesión: {inicio_nueva}")
+    print(f"Fin nueva sesión: {fin_nueva}")
+
+    if not inicio_nueva or not fin_nueva:
+        raise HTTPException(
+            status_code=400,
+            detail="La sesión actual debe tener inicio y fin definidos para validar conflictos."
+        )
+
     # Query para buscar reservas que se solapen en el tiempo PARA LA MISMA COMUNIDAD
     reservas_en_conflicto = session.exec(
         select(Reserva)
@@ -353,10 +367,16 @@ def validar_cliente_sin_conflicto(
             Reserva.id_cliente == cliente_id,
             Reserva.id_comunidad == id_comunidad,  # <-- ¡Clave! Solo en la misma comunidad
             Reserva.estado_reserva.in_(["confirmada", "formulario_pendiente"]),
+            Sesion.inicio.is_not(None),
+            Sesion.fin.is_not(None),
             inicio_nueva < Sesion.fin,
             fin_nueva > Sesion.inicio
         )
     ).all()
+
+    print(f"🔍 Reservas en conflicto encontradas: {len(reservas_en_conflicto)}")
+    for r in reservas_en_conflicto:
+        print(f"- Conflicto con sesión ID: {r.id_sesion}, Estado: {r.estado_reserva}")
 
     if reservas_en_conflicto:
         raise HTTPException(
@@ -431,6 +451,16 @@ def obtener_url_archivo_virtual(session: Session, id_sesion: int) -> str | None:
         select(SesionVirtual).where(SesionVirtual.id_sesion == id_sesion)
     ).first()
     return sv.url_archivo if sv else None
+
+
+
+def es_plan_con_topes_virtual(plan: Plan) -> bool:
+    return plan.topes is not None and plan.topes > 0
+
+'''
+def es_plan_con_topes_virtual(plan: Plan) -> bool:
+    return plan.topes is not None and plan.topes > 0
+'''
 def crear_reserva_virtual_con_validaciones(
     session: Session,
     id_sesion: int,
@@ -442,11 +472,16 @@ def crear_reserva_virtual_con_validaciones(
     reserva = None
 
     # SAVEPOINT para capturar errores sin afectar toda la transacción
+    print("🔹 Iniciando creación de reserva virtual")
     with session.begin_nested():
+        print("🔸 Obteniendo sesión bloqueada...")
         sesion = obtener_sesion_bloqueada(session, id_sesion)  # ← usa FOR UPDATE
+        print("🔸 Validando unicidad virtual...")
         validar_unicidad_virtual(session, sesion)
+        print("🔸 Validando cliente sin conflicto...")
         validar_cliente_sin_conflicto(session, cliente_id, sesion, id_comunidad)
 
+        print("🔹 Obteniendo inscripción activa...")
         inscripcion = obtener_inscripcion_activa(session, cliente_id, id_comunidad)
         if not inscripcion:
             raise HTTPException(404, "No se encontró inscripción activa para este cliente en la comunidad.")
@@ -457,8 +492,12 @@ def crear_reserva_virtual_con_validaciones(
         if not plan:
             raise HTTPException(500, "El plan asociado a la inscripción no existe.")
 
-        if es_plan_con_topes(plan):
+        print(f"📌 Plan encontrado: id={plan.id_plan}, topes={plan.topes}")
+
+        if es_plan_con_topes_virtual(plan):
+            print("✅ El plan tiene topes. Obteniendo detalle...")
             detalle = obtener_detalle_topes_bloqueado(session, inscripcion.id_inscripcion)
+            print("🔍 Detalle topes:", detalle)
             if detalle is None:
                 raise HTTPException(500, "No se encontró detalle de topes.")
             validar_topes_disponibles(detalle)
@@ -536,8 +575,7 @@ def obtener_inscripcion_activa(session: Session, cliente_id: int, comunidad_id: 
     return inscripcion
 
 
-def es_plan_con_topes(plan: Plan) -> bool:
-    return getattr(plan, "tiene_topes", False) or getattr(plan, "topes_maximos", None) is not None
+
 
 
 def obtener_detalle_topes_bloqueado(session: Session, id_inscripcion: int) -> DetalleInscripcion:
@@ -966,7 +1004,7 @@ def cancelar_reserva_por_id(db: Session, id_reserva: int, id_usuario: int):
     No devuelve el cupo/crédito al usuario.
     """
     # 1. Buscar al cliente
-    cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
+    cliente = db.exec(select(Cliente).obtener_resumen_reserva_presencialwhere(Cliente.id_usuario == id_usuario)).first()
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
 
