@@ -25,7 +25,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # O usa ["*"] temporalmente para probar
+    allow_origins=["https://cheerful-manatee-789591.netlify.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
