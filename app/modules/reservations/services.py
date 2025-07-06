@@ -841,6 +841,7 @@ def get_reservation_details(db: Session, id_reserva: int, id_usuario: int):
     
     response_data = {
         "id_reserva": id_reserva,
+        "id_sesion": sesion.id_sesion,
         "nombre_servicio": servicio.nombre,
         "fecha": local_inicio.date() if local_inicio else None,
         "hora_inicio": local_inicio.time() if local_inicio else None,
