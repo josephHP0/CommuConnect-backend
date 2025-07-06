@@ -1031,8 +1031,6 @@ def verificar_cruce_de_reservas(db: Session, id_cliente: int, id_comunidad: int,
 
     return reservas_existentes is not None
 
-
-
 def procesar_archivo_sesiones_virtuales(db: Session, archivo, creado_por: str):
     df = pd.read_excel(BytesIO(archivo.file.read()), engine="openpyxl")
     df = df.replace({np.nan: None})

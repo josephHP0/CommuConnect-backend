@@ -244,7 +244,7 @@ def construir_respuesta_contexto(
 
             # 🔹 Determinar el estado de membresía individualmente
             estado = tiene_membresia_activa(session, id_cliente, comunidad.id_comunidad) # type: ignore
-
+            
             comunidad_contexto = ComunidadContexto.from_orm_with_base64(
                 comunidad=comunidad,
                 servicios=servicios_resumen,

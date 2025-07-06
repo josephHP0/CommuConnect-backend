@@ -214,11 +214,13 @@ def procesar_archivo_profesionales(db: Session, archivo: UploadFile, creado_por:
             email = str(fila.get("email")).strip().lower()
 
             if pd.isna(email) or email == "":
+                resumen["errores"].append(f"Fila {idx + 2}: El email está vacío")
                 resumen["omitidos"] += 1
                 continue
 
             existe = db.exec(select(Profesional).where(Profesional.email == email)).first()
             if existe:
+                resumen["errores"].append(f"Fila {idx + 2}: El email '{email}' ya existe")
                 resumen["omitidos"] += 1
                 continue
 

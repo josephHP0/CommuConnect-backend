@@ -185,8 +185,6 @@ def verificar_reserva(
         print(f"Error al verificar reserva: {e}")
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
-
-
 @router.post(
     "/virtual",
     response_model=ReservaResponse,
@@ -431,7 +429,6 @@ async def enviar_formulario(
         cliente_nombre=cliente_nombre
     )
 
-
 @router.post("/carga-masiva")
 def carga_masiva_sesiones_virtuales(
     archivo: UploadFile = File(...),
@@ -440,33 +437,17 @@ def carga_masiva_sesiones_virtuales(
 ):
     try:
         resultado = procesar_archivo_sesiones_virtuales(db, archivo, current_admin.email)
-        return {
-            "mensaje": "Carga masiva de sesiones virtuales completada correctamente.",
-            "resumen": resultado
-        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en carga masiva: {str(e)}")
-@router.get(
-    "/virtual/summary/reserva/{id_reserva}",
-    response_model=ReservaVirtualSummary,
-    summary="Obtiene el resumen de una reserva virtual específica para el usuario actual",
-)
-def get_resumen_reserva_virtual(
-    *,
-    id_reserva: int,
-    session: Session = Depends(get_session),
-    current_user: Usuario = Depends(get_current_user),
-):
-    resumen, error = obtener_resumen_reserva_virtual(
-        db=session,
-        id_reserva=id_reserva,
-        id_usuario=current_user.id_usuario,
-    )
+        resultado = {
+            "insertados": 0,
+            "errores": [f"Error general: {str(e)}"]
+        }
 
-    if error:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error)
+    return {
+        "mensaje": "Carga masiva de sesiones virtuales completada (con errores)" if resultado["errores"] else "Carga exitosa.",
+        "resumen": resultado
+    }
 
-    return resumen
 
 @router.get(
     "/virtual/summary/reserva/{id_reserva}",
@@ -489,3 +470,5 @@ def get_resumen_reserva_virtual(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error)
 
     return resumen
+
+
