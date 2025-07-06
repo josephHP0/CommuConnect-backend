@@ -6,7 +6,7 @@ from app.main import app
 
 client = TestClient(app)
 
-# ⚙️ Datos de login de un admin ya registrado
+#Datos de login de un admin ya registrado
 LOGIN_DATA = {
     "email": "bernardo@pucp.com",
     "password": "1234"

@@ -21,7 +21,7 @@ from datetime import timedelta
 from app.core.security import create_access_token, hash_password, decode_access_token
 from utils.email_brevo import send_reset_link_email, send_password_changed_email
 from jose import JWTError
-
+import os
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def crear_usuario(db: Session, usuario: UsuarioCreate):
@@ -162,6 +162,8 @@ def obtener_comunidades_del_cliente(session: Session, id_cliente: int) -> List[C
 
 
 def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int) -> int:
+    from datetime import datetime
+    
     inscripcion = session.exec(
         select(Inscripcion)
         .where(
@@ -170,8 +172,59 @@ def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int)
         )
         .order_by(Inscripcion.fecha_creacion.desc()) # type: ignore
     ).first()
-    # Si no hay inscripción, puedes retornar None o un valor especial si lo deseas
-    return inscripcion.estado if inscripcion else None # type: ignore
+    
+    if not inscripcion:
+        return None # type: ignore
+    
+    # 🔥 NUEVA LÓGICA: Reactivar automáticamente si hay suspensión expirada
+    if inscripcion.estado == 0:  # Congelado
+        from app.modules.billing.models import Suspension
+        ahora = datetime.now()
+        
+        # Buscar suspensión expirada (aceptada pero ya terminó)
+        suspension_expirada = session.exec(
+            select(Suspension)
+            .where(
+                Suspension.id_inscripcion == inscripcion.id_inscripcion,
+                Suspension.estado == 1,  # Aceptada
+                Suspension.fecha_fin <= ahora  # Ya terminó
+            )
+        ).first()
+        
+        if suspension_expirada:
+            # ✨ REACTIVAR AUTOMÁTICAMENTE
+            inscripcion.estado = 1  # Activa
+            inscripcion.modificado_por = "sistema_auto"
+            inscripcion.fecha_modificacion = datetime.utcnow()
+            session.add(inscripcion)
+            session.commit()
+            session.refresh(inscripcion)
+            print(f"🔄 Membresía reactivada automáticamente - Inscripción ID: {inscripcion.id_inscripcion}")
+    
+    # Si la inscripción no está activa, retornar su estado
+    if inscripcion.estado != 1:  # 1 = Activa
+        return inscripcion.estado # type: ignore
+    
+    # Si la inscripción está activa, verificar si hay suspensión vigente
+    from app.modules.billing.models import Suspension
+    ahora = datetime.now()
+    
+    suspension_activa = session.exec(
+        select(Suspension)
+        .where(
+            Suspension.id_inscripcion == inscripcion.id_inscripcion,
+            Suspension.estado == 1,  # Aceptada
+            Suspension.fecha_inicio <= ahora,  # Ya comenzó
+            Suspension.fecha_fin > ahora  # Aún no terminó
+        )
+    ).first()
+    
+    if suspension_activa:
+        # Hay una suspensión activa, retornar estado especial
+        return 2  # 2 = Suspendida (puedes usar el código que prefieras)
+    
+    # No hay suspensión activa, la membresía está disponible
+    return inscripcion.estado # type: ignore
 
 def construir_respuesta_contexto(
     session: Session,
@@ -346,8 +399,8 @@ def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str)
 
 """sercies cambio de contraseña"""
 RESET_LINK_EXPIRATION_MINUTES = 5
-FRONTEND_RESET_URL = "http://localhost:4200/reset-password"
-
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:4200")
+FRONTEND_RESET_URL = f"{FRONTEND_URL}/#/autenticacion/reset-password"
 
 def solicitar_recuperacion_contrasena_con_link(db: Session, email: str, bg: BackgroundTasks) -> dict:
     """
