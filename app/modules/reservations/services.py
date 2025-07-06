@@ -997,14 +997,16 @@ async def completar_formulario_virtual(
     )
 
     return {"mensaje": "Archivo enviado al profesional correspondiente."}
-
+'''
 def cancelar_reserva_por_id(db: Session, id_reserva: int, id_usuario: int):
     """
     Cancela una reserva cambiando su estado a 'cancelada'.
     No devuelve el cupo/crédito al usuario.
     """
     # 1. Buscar al cliente
-    cliente = db.exec(select(Cliente).obtener_resumen_reserva_presencialwhere(Cliente.id_usuario == id_usuario)).first()
+   # cliente = db.exec(select(Cliente).obtener_resumen_reserva_presencialwhere(Cliente.id_usuario == id_usuario)).first()
+    cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
+   
     if not cliente:
         raise HTTPException(status_code=404, detail="Cliente no encontrado.")
 
@@ -1017,7 +1019,7 @@ def cancelar_reserva_por_id(db: Session, id_reserva: int, id_usuario: int):
         raise HTTPException(status_code=403, detail="No tienes permiso para cancelar esta reserva.")
 
     # 3. Validar que la reserva está en un estado cancelable
-    if reserva.estado_reserva != "confirmada":
+    if reserva.estado_reserva != "confirmada": 
         raise HTTPException(
             status_code=400,
             detail=f"La reserva ya está en estado '{reserva.estado_reserva}' y no puede ser cancelada."
@@ -1047,6 +1049,144 @@ def cancelar_reserva_por_id(db: Session, id_reserva: int, id_usuario: int):
         send_reservation_cancel_email(usuario.email, details)
     
     return {"message": "Reserva cancelada exitosamente."}
+'''
+
+
+def cancelar_reserva_por_id(db: Session, id_reserva: int, id_usuario: int):
+    """
+    Cancela una reserva cambiando su estado a 'cancelada'.
+    Aplica reglas especiales para sesiones presenciales (mínimo 1 hora antes).
+    """
+    # 1. Buscar cliente
+    cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+
+    # 2. Buscar reserva
+    reserva = db.get(Reserva, id_reserva)
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada.")
+    if reserva.id_cliente != cliente.id_cliente:
+        raise HTTPException(status_code=403, detail="No tienes permiso para cancelar esta reserva.")
+
+    # 3. Validar estado de la reserva
+    if not reserva.estado_reserva :
+        raise HTTPException(
+            status_code=400,
+            detail=f"La reserva no está en estado 'confirmada' y no puede ser cancelada."
+        )
+
+    # 4. Verificar tipo de sesión y hora
+    sesion = db.get(Sesion, reserva.id_sesion)
+    if not sesion:
+        raise HTTPException(status_code=404, detail="Sesión vinculada no encontrada.")
+
+    ahora = datetime.utcnow()
+
+    if sesion.tipo == "Presencial":
+        if not sesion.inicio:
+            raise HTTPException(status_code=400, detail="La sesión no tiene hora de inicio definida.")
+
+        if sesion.inicio <= ahora:
+            raise HTTPException(
+                status_code=400,
+                detail="No puedes cancelar una reserva cuya sesión ya ocurrió."
+            )
+
+        if sesion.inicio - ahora < timedelta(hours=1):
+            raise HTTPException(
+                status_code=400,
+                detail="Solo puedes cancelar una reserva presencial con al menos 1 hora de anticipación."
+            )
+
+    # 5. Cancelar la reserva
+    reserva.estado_reserva = "cancelada"
+    reserva.modificado_por = str(id_usuario)
+    reserva.fecha_modificacion = datetime.utcnow()
+    db.add(reserva)
+    db.commit()
+    db.refresh(reserva)
+
+    # 6. Enviar correo
+    usuario = db.get(Usuario, id_usuario)
+    servicio = db.get(Servicio, sesion.id_servicio) if sesion else None
+
+    if usuario and servicio:
+        details = {
+            "nombre_cliente": usuario.nombre,
+            "nombre_servicio": servicio.nombre,
+            "fecha": sesion.inicio.strftime("%Y-%m-%d") if sesion.inicio else ""
+        }
+        send_reservation_cancel_email(usuario.email, details)
+
+    return {"message": "Reserva cancelada exitosamente."}
+
+
+def cancelar_reserva_virtual_por_id(db: Session, id_reserva: int, id_usuario: int):
+    """
+    Cancela una reserva virtual solo si:
+    - Se realiza al menos 24 horas antes del inicio.
+    - No ha finalizado la sesión.
+    """
+
+    # 1. Buscar cliente
+    cliente = db.exec(select(Cliente).where(Cliente.id_usuario == id_usuario)).first()
+    if not cliente:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+
+    # 2. Buscar reserva
+    reserva = db.get(Reserva, id_reserva)
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada.")
+
+    if reserva.id_cliente != cliente.id_cliente:
+        raise HTTPException(status_code=403, detail="No tienes permiso para cancelar esta reserva.")
+
+    if reserva.estado_reserva == "confirmada":
+        raise HTTPException(
+            status_code=400,
+            detail=f"La reserva ya está en estado '{reserva.estado_reserva}' y no puede ser cancelada."
+        )
+
+    # 3. Validar sesión virtual
+    sesion = db.get(Sesion, reserva.id_sesion)
+    if not sesion or sesion.tipo != "Virtual":
+        raise HTTPException(status_code=400, detail="La sesión no es virtual o no existe.")
+
+    if not sesion.inicio or not sesion.fin:
+        raise HTTPException(status_code=400, detail="La sesión no tiene fechas válidas.")
+
+    ahora = datetime.utcnow()
+
+    # 4. Validar tiempo con respecto a la sesión
+    if ahora > sesion.fin:
+        raise HTTPException(status_code=400, detail="La sesión ya ocurrió, no se puede cancelar.")
+
+    if ahora >= sesion.inicio - timedelta(hours=24):
+        raise HTTPException(status_code=400, detail="Solo puedes cancelar hasta 24 horas antes del inicio de la sesión.")
+
+    # 5. Cancelar reserva
+    reserva.estado_reserva = "cancelada"
+    reserva.fecha_modificacion = ahora
+    reserva.modificado_por = str(id_usuario)
+
+    db.add(reserva)
+    db.commit()
+    db.refresh(reserva)
+
+    # 6. Enviar correo de confirmación
+    usuario = db.get(Usuario, id_usuario)
+    servicio = db.get(Servicio, sesion.id_servicio) if sesion else None
+
+    if usuario and servicio:
+        details = {
+            "nombre_cliente": usuario.nombre,
+            "nombre_servicio": servicio.nombre,
+            "fecha": sesion.inicio.strftime("%Y-%m-%d"),
+        }
+        send_reservation_cancel_email(usuario.email, details)
+
+    return {"message": "Reserva virtual cancelada exitosamente."}
 
 def verificar_cruce_de_reservas(db: Session, id_cliente: int, id_comunidad: int, inicio_nueva: datetime, fin_nueva: datetime) -> bool:
     """
