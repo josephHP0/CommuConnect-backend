@@ -11,7 +11,7 @@ from app.modules.reservations.services import (
     obtener_fechas_inicio_por_profesional, existe_reserva_para_usuario, obtener_resumen_reserva_presencial, 
     crear_reserva_presencial, listar_reservas_usuario_comunidad_semana, get_reservation_details, 
     cancelar_reserva_por_id, obtener_url_archivo_virtual, 
-    obtener_info_formulario, completar_formulario_virtual
+    obtener_info_formulario, completar_formulario_virtual,cancelar_reserva_virtual_por_id
 )
 from app.modules.reservations.schemas import (
     FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, 
@@ -372,6 +372,18 @@ def cancel_reservation(
     id_usuario = current_user.id_usuario
     result = cancelar_reserva_por_id(db=db, id_reserva=id_reserva, id_usuario=id_usuario)
     return result
+
+@router.patch("/{id_reserva}/cancel-virtual", status_code=200)
+def cancel_virtual_reservation(
+    id_reserva: int = FastPath(..., title="ID de la Reserva virtual a cancelar", ge=1),
+    db: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Cancela una reserva virtual, si aún no ha iniciado.
+    """
+    id_usuario = current_user.id_usuario
+    return cancelar_reserva_virtual_por_id(db=db, id_reserva=id_reserva, id_usuario=id_usuario)
 
 @router.get("/formulario/{id_sesion}", response_model=FormularioInfoResponse)
 def get_info_formulario(

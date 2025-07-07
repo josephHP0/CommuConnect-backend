@@ -95,7 +95,7 @@ class ProfesionalOut(BaseModel):
 class ProfesionalCreate(BaseModel):
     nombre_completo: Optional[str]
     email: Optional[str]
-    id_servicio: Optional[int]
+    id_servicio: int
     formulario: Optional[str]
 
 class SesionVirtualConDetalle(BaseModel):

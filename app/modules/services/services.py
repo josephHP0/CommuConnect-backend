@@ -61,7 +61,7 @@ def obtener_distritos_por_servicio_service(session: Session, id_servicio: int) -
     distrito_ids = {local.id_distrito for local in locales if local.id_distrito is not None}
 
     distritos = session.exec(
-        select(Distrito).where(Distrito.id_distrito.in_(distrito_ids))
+        select(Distrito).where(Distrito.id_distrito.in_(distrito_ids)) # type: ignore
     ).all()
 
     resultado = []
@@ -80,12 +80,14 @@ def listar_servicios(db: Session) -> list[ServicioRead]:
     servicios = db.exec(select(Servicio)).all()
     resultado = []
     for servicio in servicios:
-        servicio_dict = servicio.dict()
-        if servicio.imagen:
-            servicio_dict["imagen_base64"] = base64.b64encode(servicio.imagen).decode("utf-8")
-        else:
-            servicio_dict["imagen_base64"] = None
-        resultado.append(ServicioRead(**servicio_dict))
+        if servicio.estado != 0:
+            #print("Servicio:", servicio.nombre, servicio.estado)
+            servicio_dict = servicio.dict()
+            if servicio.imagen:
+                servicio_dict["imagen_base64"] = base64.b64encode(servicio.imagen).decode("utf-8")
+            else:
+                servicio_dict["imagen_base64"] = None
+            resultado.append(ServicioRead(**servicio_dict))
     return resultado
 
 
@@ -111,13 +113,26 @@ def crear_servicio(
     db.commit()
     db.refresh(nuevo_servicio)
     return nuevo_servicio
-
+'''
 def eliminar_servicio(db: Session, id_servicio: int, usuario: str = "admin"):
     servicio = db.get(Servicio, id_servicio)
     if not servicio:
         raise HTTPException(status_code=404, detail="Servicio no encontrado")
 
     servicio.estado = False
+    servicio.fecha_modificacion = datetime.now(timezone.utc)
+    servicio.modificado_por = usuario
+
+    db.add(servicio)
+    db.commit()
+'''
+def eliminar_servicio(db: Session, id_servicio: int, usuario: str = "admin"):
+    servicio = db.get(Servicio, id_servicio)
+    if not servicio:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+
+    # Cambiar estado: True → False, False → True
+    servicio.estado = not servicio.estado
     servicio.fecha_modificacion = datetime.now(timezone.utc)
     servicio.modificado_por = usuario
 
@@ -154,8 +169,10 @@ def actualizar_servicio(
 
 def obtener_servicio_por_id(db: Session, id_servicio: int) -> ServicioRead:
     servicio = db.get(Servicio, id_servicio)
-    if not servicio or not servicio.estado:
+    if not servicio:
         raise HTTPException(status_code=404, detail="Servicio no encontrado")
+    elif not servicio.estado:
+        raise HTTPException(status_code=404, detail="Servicio eliminado o inactivo")    
 
     imagen_base64 = (
         base64.b64encode(servicio.imagen).decode("utf-8")
@@ -163,7 +180,7 @@ def obtener_servicio_por_id(db: Session, id_servicio: int) -> ServicioRead:
     )
 
     return ServicioRead(
-        id_servicio=servicio.id_servicio,
+        id_servicio=servicio.id_servicio, # type: ignore
         nombre=servicio.nombre,
         descripcion=servicio.descripcion,
         modalidad=servicio.modalidad,
@@ -172,11 +189,11 @@ def obtener_servicio_por_id(db: Session, id_servicio: int) -> ServicioRead:
         creado_por=servicio.creado_por,
         fecha_modificacion=servicio.fecha_modificacion,
         modificado_por=servicio.modificado_por,
-        estado=servicio.estado
+        estado=servicio.estado # type: ignore
     )
 
 def listar_profesionales(db: Session) -> list[Profesional]:
-    return db.exec(select(Profesional).where(Profesional.estado == 1)).all()
+    return db.exec(select(Profesional).where(Profesional.estado == 1)).all() # type: ignore
 
 def crear_profesional(db: Session, data: ProfesionalCreate, creado_por: str) -> Profesional:
     nuevo_profesional = Profesional(
@@ -199,7 +216,7 @@ def listar_locales_por_servicio(db: Session, id_servicio: int) -> list[Local]:
         Local.id_servicio == id_servicio,
         Local.estado == 1
     )
-    return db.exec(query).all()
+    return db.exec(query).all() # type: ignore
 
 
 def procesar_archivo_profesionales(db: Session, archivo: UploadFile, creado_por: str):
@@ -216,21 +233,21 @@ def procesar_archivo_profesionales(db: Session, archivo: UploadFile, creado_por:
             email = str(fila.get("email")).strip().lower()
 
             if pd.isna(email) or email == "":
-                resumen["errores"].append(f"Fila {idx + 2}: El email está vacío")
+                resumen["errores"].append(f"Fila {idx + 2}: El email está vacío") # type: ignore
                 resumen["omitidos"] += 1
                 continue
 
             existe = db.exec(select(Profesional).where(Profesional.email == email)).first()
             if existe:
-                resumen["errores"].append(f"Fila {idx + 2}: El email '{email}' ya existe")
+                resumen["errores"].append(f"Fila {idx + 2}: El email '{email}' ya existe") # type: ignore
                 resumen["omitidos"] += 1
                 continue
 
-            servicio_id = int(fila.get("id_servicio")) if not pd.isna(fila.get("id_servicio")) else None
+            servicio_id = int(fila.get("id_servicio")) if not pd.isna(fila.get("id_servicio")) else None # type: ignore
             if servicio_id:
                 servicio = db.exec(select(Servicio).where(Servicio.id_servicio == servicio_id)).first()
                 if not servicio:
-                    resumen["errores"].append(f"Fila {idx + 2}: servicio {servicio_id} no existe")
+                    resumen["errores"].append(f"Fila {idx + 2}: servicio {servicio_id} no existe") # type: ignore
                     continue
 
             nuevo_profesional = Profesional(
@@ -249,7 +266,7 @@ def procesar_archivo_profesionales(db: Session, archivo: UploadFile, creado_por:
 
         except Exception as e:
             db.rollback()
-            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")
+            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}") # type: ignore
 
     return resumen
 
@@ -270,14 +287,14 @@ def obtener_sesiones_virtuales_por_profesional(
 
         if sesion:
             inscritos_resultado = db.exec(
-                select(func.count(Reserva.id_reserva)).where(Reserva.id_sesion == sesion.id_sesion)
+                select(func.count(Reserva.id_reserva)).where(Reserva.id_sesion == sesion.id_sesion) # type: ignore
             ).one()
 
             inscritos = inscritos_resultado[0] if isinstance(inscritos_resultado, tuple) else inscritos_resultado
 
             resultado.append(SesionVirtualConDetalle(
-                id_sesion_virtual=sv.id_sesion_virtual,
-                id_sesion=sesion.id_sesion,
+                id_sesion_virtual=sv.id_sesion_virtual, # type: ignore
+                id_sesion=sesion.id_sesion, # type: ignore
                 fecha=sesion.inicio.date() if sesion.inicio else None,
                 hora_inicio=sesion.inicio.time() if sesion.inicio else None,
                 hora_fin=sesion.fin.time() if sesion.fin else None,
@@ -312,7 +329,7 @@ def obtener_detalle_sesion_virtual(id_sesion_virtual: int, db: Session) -> Detal
     inscritos_out = listar_inscritos_de_sesion(sv.id_sesion, db)
 
     return DetalleSesionVirtualResponse(
-        id_sesion_virtual=sv.id_sesion_virtual,
+        id_sesion_virtual=sv.id_sesion_virtual, # type: ignore
         descripcion=sesion.descripcion,
         fecha=sesion.inicio.date() if sesion.inicio else None,
         hora_inicio=sesion.inicio.time() if sesion.inicio else None,
@@ -333,17 +350,17 @@ def obtener_detalle_sesion_presencial(id_sesion_presencial: int, db: Session) ->
     sp, sesion, local = get_sesion_presencial_con_local(id_sesion_presencial, db)
 
     # Formatear local
-    local_out = formatear_local(local)
+    local_out = formatear_local(local) # type: ignore
 
     # Listar inscritos
-    inscritos_out = listar_inscritos_presencial(sp.id_sesion, db)
+    inscritos_out = listar_inscritos_presencial(sp.id_sesion, db) # type: ignore
 
     return DetalleSesionPresencialResponse(
-        id_sesion_presencial=sp.id_sesion_presencial,
-        descripcion=sesion.descripcion,
-        fecha=sesion.inicio.date() if sesion.inicio else None,
-        hora_inicio=sesion.inicio.time() if sesion.inicio else None,
-        hora_fin=sesion.fin.time() if sesion.fin else None,
+        id_sesion_presencial=sp.id_sesion_presencial, # type: ignore
+        descripcion=sesion.descripcion, # type: ignore
+        fecha=sesion.inicio.date() if sesion.inicio else None, # type: ignore
+        hora_inicio=sesion.inicio.time() if sesion.inicio else None, # type: ignore
+        hora_fin=sesion.fin.time() if sesion.fin else None, # type: ignore
         local=local_out,
         inscritos=inscritos_out
     )
@@ -366,18 +383,18 @@ def obtener_sesiones_presenciales_por_local(
 
         if sesion:
             inscritos_resultado = db.exec(
-                select(func.count(Reserva.id_reserva)).where(Reserva.id_sesion == sesion.id_sesion)
+                select(func.count(Reserva.id_reserva)).where(Reserva.id_sesion == sesion.id_sesion) # type: ignore
             ).one()
 
             inscritos = inscritos_resultado[0] if isinstance(inscritos_resultado, tuple) else inscritos_resultado
 
             resultado.append(SesionPresencialConDetalle(
-                id_sesion_presencial=sp.id_sesion_presencial,
-                id_sesion=sesion.id_sesion,
+                id_sesion_presencial=sp.id_sesion_presencial, # type: ignore
+                id_sesion=sesion.id_sesion, # type: ignore
                 fecha=sesion.inicio.date() if sesion.inicio else None,
                 hora_inicio=sesion.inicio.time() if sesion.inicio else None,
                 hora_fin=sesion.fin.time() if sesion.fin else None,
-                capacidad=sp.capacidad,                     # ✅ nuevo campo
+                capacidad=sp.capacidad,                     # ✅ nuevo campo # type: ignore
                 inscritos=inscritos
             ))
 
@@ -423,13 +440,13 @@ def listar_inscritos_de_sesion(id_sesion: int, db: Session) -> List[InscritoDeta
 
     for reserva in reservas:
         cliente = db.get(Cliente, reserva.id_cliente)
-        usuario = db.get(Usuario, cliente.id_usuario)
+        usuario = db.get(Usuario, cliente.id_usuario) # type: ignore
         comunidad = db.get(Comunidad, reserva.id_comunidad)
 
         inscritos.append(InscritoDetalleOut(
-            nombre=usuario.nombre,
-            apellido=usuario.apellido,
-            comunidad=comunidad.nombre,
+            nombre=usuario.nombre, # type: ignore
+            apellido=usuario.apellido, # type: ignore
+            comunidad=comunidad.nombre, # type: ignore
             entrego_archivo=bool(reserva.archivo)
         ))
 
@@ -444,13 +461,13 @@ def listar_inscritos_presencial(id_sesion: int, db: Session) -> List[InscritoPre
 
     for reserva in reservas:
         cliente = db.get(Cliente, reserva.id_cliente)
-        usuario = db.get(Usuario, cliente.id_usuario)
+        usuario = db.get(Usuario, cliente.id_usuario) # type: ignore
         comunidad = db.get(Comunidad, reserva.id_comunidad)
 
         inscritos.append(InscritoPresencialDetalleOut(
-            nombre=usuario.nombre,
-            apellido=usuario.apellido,
-            comunidad=comunidad.nombre
+            nombre=usuario.nombre, # type: ignore
+            apellido=usuario.apellido, # type: ignore
+            comunidad=comunidad.nombre # type: ignore
         ))
 
     return inscritos
