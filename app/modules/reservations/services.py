@@ -490,7 +490,7 @@ def crear_reserva_virtual_con_validaciones(
     with session.begin_nested():
         print("🔸 Obteniendo sesión bloqueada...")
         sesion = obtener_sesion_bloqueada(session, id_sesion)
-        if sesion.modalidad != "Virtual":
+        if sesion.tipo != "Virtual":
             raise HTTPException(status_code=400, detail="La sesión no es de tipo virtual.")
         
         print("🔸 Validando unicidad virtual...")
