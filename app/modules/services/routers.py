@@ -450,7 +450,7 @@ def crear_local_endpoint(
         servicio = db.get(Servicio, data.id_servicio)
         if not servicio:
             raise HTTPException(status_code=404, detail="Servicio no encontrado")
-        if getattr(servicio, "modalidad", None) != ModalidadServicio.presencial: # type: ignore
+        if getattr(servicio, "modalidad", None) != ModalidadServicio.Presencial: # type: ignore
             raise HTTPException(status_code=400, detail="Solo se pueden crear locales para servicios presenciales")
     return crear_local(db, data, creado_por=current_user.email)
 

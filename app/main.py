@@ -19,7 +19,7 @@ app = FastAPI(debug=True)
 
 origins = [
     "cheerful-manatee-789591.netlify.app"
-    #http://localhost:4200",
+    #"http://localhost:4200"
     #"http://commuconnect-frontend-v1.s3-website-us-east-1.amazonaws.com"
 ]
 
