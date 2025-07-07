@@ -8,7 +8,7 @@ EMAIL_FROM   = os.getenv("EMAIL_FROM")
 FRONTEND_URL = os.getenv("FRONTEND_URL")
 
 def send_confirmation_email(to_email: str, token: str) -> None:
-    url  = f"{FRONTEND_URL}/presentacion/pages/correo-confirmado/{token}"
+    url  = f"{FRONTEND_URL}/presentacion/correo-confirmado/{token}"
     html = f"""
       <h2>¡Bienvenido a CommuConnect!</h2>
       <p>Pulsa el botón para activar tu cuenta:</p>
