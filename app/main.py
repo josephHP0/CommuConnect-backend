@@ -18,14 +18,16 @@ logging.basicConfig(level=logging.DEBUG)
 app = FastAPI(debug=True)
 
 origins = [
-    "cheerful-manatee-789591.netlify.app"
+    #"cheerful-manatee-789591.netlify.app"
+    "commuconnect-moises.netlify.app"
     #"http://localhost:4200"
     #"http://commuconnect-frontend-v1.s3-website-us-east-1.amazonaws.com"
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://cheerful-manatee-789591.netlify.app"],
+    #allow_origins=["https://cheerful-manatee-789591.netlify.app"],
+    allow_origins=["https://commuconnect-moises.netlify.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
