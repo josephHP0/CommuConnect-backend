@@ -15,6 +15,8 @@ from .schemas import DetalleSesionVirtualResponse, LocalCreate, ProfesionalDetal
 from app.modules.users.models import Cliente, Usuario
 from app.modules.communities.models import Comunidad
 from io import BytesIO
+import numpy as np
+from app.modules.reservations.schemas import SesionPresencialCargaMasiva
 
 
 def obtener_servicios_por_ids(session: Session, servicio_ids: List[int]):
@@ -475,3 +477,138 @@ def crear_local(
     db.commit()
     db.refresh(local)
     return local
+
+
+def procesar_archivo_sesiones_presenciales(
+    db: Session, archivo: UploadFile, id_servicio: int, creado_por: str
+):
+    df = pd.read_excel(BytesIO(archivo.file.read()), engine="openpyxl")
+    df = df.replace({np.nan: None})
+
+    resumen = {
+        "insertados": 0,
+        "errores": []
+    }
+
+    for idx, fila in df.iterrows():
+        try:
+            datos_dict = fila.to_dict()
+            datos_dict["id_servicio"] = id_servicio
+            
+            valor_capacidad = datos_dict.get("capacidad")
+
+            try:
+                if valor_capacidad is None or str(valor_capacidad).strip() == '':
+                    datos_dict["capacidad"] = None
+                else:
+                    datos_dict["capacidad"] = int(float(valor_capacidad))
+            except (ValueError, TypeError):
+                datos_dict["capacidad"] = None
+
+                
+            datos = SesionPresencialCargaMasiva.model_validate(datos_dict)
+            procesar_fila_sesion_presencial(
+                db=db,
+                datos=datos,
+                id_servicio=id_servicio,
+                creado_por=creado_por,
+                fila=idx + 2
+            )
+            resumen["insertados"] += 1
+        except Exception as e:
+            db.rollback()
+            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")
+
+    return resumen
+
+
+def procesar_fila_sesion_presencial(
+    db: Session,
+    datos: SesionPresencialCargaMasiva,
+    id_servicio: int,
+    creado_por: str,
+    fila: int
+):
+    ahora = datetime.now(timezone.utc)
+
+    # Validar que el local exista y esté vinculado al servicio
+    local = db.exec(
+        select(Local).where(
+            Local.id_local == datos.id_local,
+            Local.id_servicio == id_servicio
+        )
+    ).first()
+
+    if not local:
+        raise ValueError(f"Fila {fila}: El local con ID {datos.id_local} no está asociado al servicio con ID {id_servicio}.")
+    
+
+    if datos.fecha_inicio.tzinfo is None:
+        datos.fecha_inicio = datos.fecha_inicio.replace(tzinfo=timezone.utc)
+    if datos.fecha_fin.tzinfo is None:
+        datos.fecha_fin = datos.fecha_fin.replace(tzinfo=timezone.utc)
+    if datos.capacidad is None or datos.capacidad <= 0:
+        raise ValueError(f"Fila {fila}: La capacidad debe ser un número positivo.")
+    if datos.fecha_inicio < ahora:
+        raise ValueError(f"Fila {fila}: No se puede crear una sesión en el pasado.")
+    if datos.fecha_inicio >= datos.fecha_fin:
+        raise ValueError(f"Fila {fila}: La fecha de inicio debe ser anterior a la fecha de fin.")
+
+    servicio = db.get(Servicio, datos.id_servicio)
+    if not servicio or servicio.estado != 1:
+        raise ValueError(f"Fila {fila}: Servicio con ID {datos.id_servicio} no existe o está inactivo.")
+    if servicio.modalidad.lower() != "presencial":
+        raise ValueError(f"Fila {fila}: El servicio {datos.id_servicio} no es presencial.")
+
+    local = db.get(Local, datos.id_local)
+    if not local or local.estado != 1:
+        raise ValueError(f"Fila {fila}: Local con ID {datos.id_local} no existe o está inactivo.")
+    if local.id_servicio != datos.id_servicio:
+        raise ValueError(f"Fila {fila}: El local {datos.id_local} no está asignado al servicio {datos.id_servicio}.")
+
+    
+
+    validar_solapamiento_presencial(db, datos, fila)
+
+    nueva_sesion = Sesion(
+        id_servicio=datos.id_servicio,
+        tipo="Presencial",
+        descripcion=datos.descripcion or f"Sesión presencial de servicio {datos.id_servicio}",
+        inicio=datos.fecha_inicio,
+        fin=datos.fecha_fin,
+        creado_por=creado_por,
+        fecha_creacion=ahora,
+        estado=1
+    )
+    db.add(nueva_sesion)
+    db.flush()
+
+    nueva_presencial = SesionPresencial(
+        id_sesion=nueva_sesion.id_sesion,
+        id_local=datos.id_local,
+        capacidad=datos.capacidad,
+        creado_por=creado_por,
+        fecha_creacion=ahora,
+        estado=1
+    )
+    db.add(nueva_presencial)
+    db.commit()
+
+
+def validar_solapamiento_presencial(db: Session, datos: SesionPresencialCargaMasiva, fila: int):
+    conflicto = db.exec(
+        select(Sesion)
+        .join(SesionPresencial, Sesion.id_sesion == SesionPresencial.id_sesion)
+        .where(
+            Sesion.id_servicio == datos.id_servicio,
+            SesionPresencial.id_local == datos.id_local,
+            Sesion.inicio < datos.fecha_fin,
+            Sesion.fin > datos.fecha_inicio
+        )
+    ).first()
+
+    if conflicto:
+        raise ValueError(
+            f"Fila {fila}: Ya existe una sesión presencial para el servicio {datos.id_servicio} en el local {datos.id_local} "
+            f"que se cruza con el horario del {datos.fecha_inicio} al {datos.fecha_fin}."
+        )

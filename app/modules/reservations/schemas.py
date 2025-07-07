@@ -1,7 +1,8 @@
 from typing import List, Optional
 from datetime import date, time, datetime
 from pydantic import BaseModel, ConfigDict,model_validator
-
+from pydantic import BaseModel, Field, field_validator
+from typing import Union
 
 class FechasPresencialesResponse(BaseModel):
     fechas: List[date]
@@ -180,3 +181,11 @@ class ReservaVirtualSummary(BaseModel):
         "Puede llenar este link más tarde desde la sección 'mis reservas', "
         "pero debe completarlo para que el profesional pueda atenderlo."
     )
+
+class SesionPresencialCargaMasiva(BaseModel):
+    descripcion: Optional[str] = Field(None, max_length=100)
+    fecha_inicio: datetime
+    fecha_fin: datetime
+    id_local: int
+    capacidad: Union[int, None] = Field(default=None)
+    id_servicio: Optional[int] = None  # ← Lo inyectarás en el service antes de validar

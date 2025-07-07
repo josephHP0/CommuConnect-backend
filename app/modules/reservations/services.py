@@ -431,6 +431,7 @@ def obtener_url_archivo_virtual(session: Session, id_sesion: int) -> str | None:
         select(SesionVirtual).where(SesionVirtual.id_sesion == id_sesion)
     ).first()
     return sv.url_archivo if sv else None
+
 def crear_reserva_virtual_con_validaciones(
     session: Session,
     id_sesion: int,
@@ -489,10 +490,6 @@ def crear_reserva_virtual_con_validaciones(
     print(f"Detalle topes usado: ID {detalle.id_registros_inscripcion if detalle else '—'}")
 
     return reserva
-
-
-
-
 
 def obtener_sesion_bloqueada(session: Session, id_sesion: int) -> Sesion:
     sesion = session.exec(
