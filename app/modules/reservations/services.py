@@ -30,7 +30,7 @@ from io import BytesIO
 
 from app.modules.billing.models import Inscripcion, Plan
 from typing import Tuple, Optional
-
+from fastapi import BackgroundTasks
 
 
 
@@ -467,18 +467,35 @@ def crear_reserva_virtual_con_validaciones(
     id_sesion: int,
     cliente_id: int,
     usuario_id: int,
-    id_comunidad: int
+    id_comunidad: int,
+    bg_tasks: BackgroundTasks
 ) -> Reserva:
     detalle = None
     reserva = None
 
-    # SAVEPOINT para capturar errores sin afectar toda la transacción
+    cliente = session.exec(
+        select(Cliente).where(
+            Cliente.id_cliente == cliente_id,
+            Cliente.id_usuario == usuario_id
+        )
+    ).first()
+
+    if not cliente:
+        raise HTTPException(
+            status_code=403,
+            detail="No tienes permiso para realizar esta operación como cliente."
+        )
+
     print("🔹 Iniciando creación de reserva virtual")
     with session.begin_nested():
         print("🔸 Obteniendo sesión bloqueada...")
-        sesion = obtener_sesion_bloqueada(session, id_sesion)  # ← usa FOR UPDATE
+        sesion = obtener_sesion_bloqueada(session, id_sesion)
+        if sesion.modalidad != "Virtual":
+            raise HTTPException(status_code=400, detail="La sesión no es de tipo virtual.")
+        
         print("🔸 Validando unicidad virtual...")
         validar_unicidad_virtual(session, sesion)
+
         print("🔸 Validando cliente sin conflicto...")
         validar_cliente_sin_conflicto(session, cliente_id, sesion, id_comunidad)
 
@@ -503,7 +520,6 @@ def crear_reserva_virtual_con_validaciones(
                 raise HTTPException(500, "No se encontró detalle de topes.")
             validar_topes_disponibles(detalle)
 
-            # ✅ Actualiza los topes directamente
             session.exec(
                 update(DetalleInscripcion)
                 .where(DetalleInscripcion.id_registros_inscripcion == detalle.id_registros_inscripcion)
@@ -512,9 +528,8 @@ def crear_reserva_virtual_con_validaciones(
                     topes_consumidos=detalle.topes_consumidos + 1
                 )
             )
-            session.flush()  # 🔄 Fuerza escritura inmediata dentro de la transacción
+            session.flush()
 
-        # ✅ Crear reserva
         reserva = crear_reserva(
             session=session,
             sesion=sesion,
@@ -523,12 +538,32 @@ def crear_reserva_virtual_con_validaciones(
             usuario_id=usuario_id
         )
 
-    # Logs de depuración (útiles si hay varios planes)
+    # Fuera del bloque nested: envío de correo
+    sesion = session.get(Sesion, reserva.id_sesion)
+    servicio = session.get(Servicio, sesion.id_servicio) if sesion else None
+    usuario = session.get(Usuario, usuario_id)
+
+    bg_tasks.add_task(
+        send_reservation_email,
+        to_email=usuario.email,
+        details={
+            "id_reserva": reserva.id_reserva,
+            "nombre_cliente": usuario.nombre,
+            "apellido_cliente": usuario.apellido,
+            "nombre_servicio": servicio.nombre if servicio else "—",
+            "fecha": reserva.fecha_reservada.date() if reserva.fecha_reservada else None,
+            "hora_inicio": reserva.fecha_reservada.time() if reserva.fecha_reservada else None,
+            "hora_fin": sesion.fin.time() if sesion and sesion.fin else None,
+            "tipo": "virtual"
+        }
+    )
+
     print(f"🔍 Cliente ID: {cliente_id}, Comunidad ID: {id_comunidad}")
     print(f"Reserva ID: {reserva.id_reserva} creada correctamente.")
     print(f"Detalle topes usado: ID {detalle.id_registros_inscripcion if detalle else '—'}")
 
     return reserva
+
 
 def obtener_sesion_bloqueada(session: Session, id_sesion: int) -> Sesion:
     sesion = session.exec(
@@ -570,9 +605,6 @@ def obtener_inscripcion_activa(session: Session, cliente_id: int, comunidad_id: 
             detail="No tienes una inscripción activa en esta comunidad."
         )
     return inscripcion
-
-
-
 
 
 def obtener_detalle_topes_bloqueado(session: Session, id_inscripcion: int) -> DetalleInscripcion:

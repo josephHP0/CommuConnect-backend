@@ -20,7 +20,8 @@ from app.modules.reservations.schemas import (
     ReservaCreate, ReservaPresencialCreadaResponse
 )
 from app.modules.auth.dependencies import get_current_user, get_current_cliente_id
-from app.modules.reservations.models import  SesionVirtual
+from app.modules.reservations.models import  SesionVirtual, Sesion
+from app.modules.services.models import  Servicio
 from app.modules.users.models import Usuario
 from fastapi import BackgroundTasks
 from app.modules.billing.services import obtener_inscripcion_activa, es_plan_con_topes
@@ -33,6 +34,7 @@ from app.modules.reservations.services import crear_reserva_virtual_con_validaci
 from app.modules.reservations.services import obtener_resumen_reserva_virtual
 from app.modules.reservations.schemas import ReservaVirtualSummary
 import traceback
+
 router = APIRouter()
 
 @router.get(
@@ -193,6 +195,7 @@ def verificar_reserva(
 )
 def create_reserva_virtual(
     reserva_in: ReservaCreate,
+    bg_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     cliente_id: int = Depends(get_current_cliente_id),
     usuario: Usuario = Depends(get_current_user)
@@ -208,14 +211,17 @@ def create_reserva_virtual(
             id_sesion=reserva_in.id_sesion,
             cliente_id=cliente_id,
             usuario_id=usuario.id_usuario,
-            id_comunidad=reserva_in.id_comunidad
+            id_comunidad=reserva_in.id_comunidad,
+            bg_tasks=bg_tasks
         )
-
         # 2. Confirmamos transacción
         session.commit()
 
         # 3. Obtenemos URL del recurso virtual si aplica
         url_archivo = obtener_url_archivo_virtual(session, reserva.id_sesion)
+
+        sesion = session.get(Sesion, reserva.id_sesion)
+        servicio = session.get(Servicio, sesion.id_servicio) if sesion else None
 
         # 4. Construimos respuesta para el frontend
         return ReservaResponse(
