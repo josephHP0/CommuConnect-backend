@@ -15,6 +15,8 @@ from .schemas import DetalleSesionVirtualResponse, LocalCreate, ProfesionalDetal
 from app.modules.users.models import Cliente, Usuario
 from app.modules.communities.models import Comunidad
 from io import BytesIO
+import numpy as np
+from app.modules.reservations.schemas import SesionPresencialCargaMasiva
 from utils.datetime_utils import convert_utc_to_local  # ✅ AGREGADO: Importación para conversión de zonas horarias
 
 
@@ -60,7 +62,7 @@ def obtener_distritos_por_servicio_service(session: Session, id_servicio: int) -
     distrito_ids = {local.id_distrito for local in locales if local.id_distrito is not None}
 
     distritos = session.exec(
-        select(Distrito).where(Distrito.id_distrito.in_(distrito_ids))
+        select(Distrito).where(Distrito.id_distrito.in_(distrito_ids)) # type: ignore
     ).all()
 
     resultado = []
@@ -79,12 +81,14 @@ def listar_servicios(db: Session) -> list[ServicioRead]:
     servicios = db.exec(select(Servicio)).all()
     resultado = []
     for servicio in servicios:
-        servicio_dict = servicio.dict()
-        if servicio.imagen:
-            servicio_dict["imagen_base64"] = base64.b64encode(servicio.imagen).decode("utf-8")
-        else:
-            servicio_dict["imagen_base64"] = None
-        resultado.append(ServicioRead(**servicio_dict))
+        if servicio.estado != 0:
+            #print("Servicio:", servicio.nombre, servicio.estado)
+            servicio_dict = servicio.dict()
+            if servicio.imagen:
+                servicio_dict["imagen_base64"] = base64.b64encode(servicio.imagen).decode("utf-8")
+            else:
+                servicio_dict["imagen_base64"] = None
+            resultado.append(ServicioRead(**servicio_dict))
     return resultado
 
 
@@ -110,13 +114,26 @@ def crear_servicio(
     db.commit()
     db.refresh(nuevo_servicio)
     return nuevo_servicio
-
+'''
 def eliminar_servicio(db: Session, id_servicio: int, usuario: str = "admin"):
     servicio = db.get(Servicio, id_servicio)
     if not servicio:
         raise HTTPException(status_code=404, detail="Servicio no encontrado")
 
     servicio.estado = False
+    servicio.fecha_modificacion = datetime.now(timezone.utc)
+    servicio.modificado_por = usuario
+
+    db.add(servicio)
+    db.commit()
+'''
+def eliminar_servicio(db: Session, id_servicio: int, usuario: str = "admin"):
+    servicio = db.get(Servicio, id_servicio)
+    if not servicio:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+
+    # Cambiar estado: True → False, False → True
+    servicio.estado = not servicio.estado
     servicio.fecha_modificacion = datetime.now(timezone.utc)
     servicio.modificado_por = usuario
 
@@ -153,8 +170,10 @@ def actualizar_servicio(
 
 def obtener_servicio_por_id(db: Session, id_servicio: int) -> ServicioRead:
     servicio = db.get(Servicio, id_servicio)
-    if not servicio or not servicio.estado:
+    if not servicio:
         raise HTTPException(status_code=404, detail="Servicio no encontrado")
+    elif not servicio.estado:
+        raise HTTPException(status_code=404, detail="Servicio eliminado o inactivo")    
 
     imagen_base64 = (
         base64.b64encode(servicio.imagen).decode("utf-8")
@@ -162,7 +181,7 @@ def obtener_servicio_por_id(db: Session, id_servicio: int) -> ServicioRead:
     )
 
     return ServicioRead(
-        id_servicio=servicio.id_servicio,
+        id_servicio=servicio.id_servicio, # type: ignore
         nombre=servicio.nombre,
         descripcion=servicio.descripcion,
         modalidad=servicio.modalidad,
@@ -171,11 +190,11 @@ def obtener_servicio_por_id(db: Session, id_servicio: int) -> ServicioRead:
         creado_por=servicio.creado_por,
         fecha_modificacion=servicio.fecha_modificacion,
         modificado_por=servicio.modificado_por,
-        estado=servicio.estado
+        estado=servicio.estado # type: ignore
     )
 
 def listar_profesionales(db: Session) -> list[Profesional]:
-    return db.exec(select(Profesional).where(Profesional.estado == 1)).all()
+    return db.exec(select(Profesional).where(Profesional.estado == 1)).all() # type: ignore
 
 def crear_profesional(db: Session, data: ProfesionalCreate, creado_por: str) -> Profesional:
     nuevo_profesional = Profesional(
@@ -198,7 +217,7 @@ def listar_locales_por_servicio(db: Session, id_servicio: int) -> list[Local]:
         Local.id_servicio == id_servicio,
         Local.estado == 1
     )
-    return db.exec(query).all()
+    return db.exec(query).all() # type: ignore
 
 
 def procesar_archivo_profesionales(db: Session, archivo: UploadFile, creado_por: str):
@@ -215,19 +234,21 @@ def procesar_archivo_profesionales(db: Session, archivo: UploadFile, creado_por:
             email = str(fila.get("email")).strip().lower()
 
             if pd.isna(email) or email == "":
+                resumen["errores"].append(f"Fila {idx + 2}: El email está vacío") # type: ignore
                 resumen["omitidos"] += 1
                 continue
 
             existe = db.exec(select(Profesional).where(Profesional.email == email)).first()
             if existe:
+                resumen["errores"].append(f"Fila {idx + 2}: El email '{email}' ya existe") # type: ignore
                 resumen["omitidos"] += 1
                 continue
 
-            servicio_id = int(fila.get("id_servicio")) if not pd.isna(fila.get("id_servicio")) else None
+            servicio_id = int(fila.get("id_servicio")) if not pd.isna(fila.get("id_servicio")) else None # type: ignore
             if servicio_id:
                 servicio = db.exec(select(Servicio).where(Servicio.id_servicio == servicio_id)).first()
                 if not servicio:
-                    resumen["errores"].append(f"Fila {idx + 2}: servicio {servicio_id} no existe")
+                    resumen["errores"].append(f"Fila {idx + 2}: servicio {servicio_id} no existe") # type: ignore
                     continue
 
             nuevo_profesional = Profesional(
@@ -246,7 +267,7 @@ def procesar_archivo_profesionales(db: Session, archivo: UploadFile, creado_por:
 
         except Exception as e:
             db.rollback()
-            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")
+            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}") # type: ignore
 
     return resumen
 
@@ -347,7 +368,7 @@ def obtener_sesiones_virtuales_por_profesional(
 
         if sesion:
             inscritos_resultado = db.exec(
-                select(func.count(Reserva.id_reserva)).where(Reserva.id_sesion == sesion.id_sesion)
+                select(func.count(Reserva.id_reserva)).where(Reserva.id_sesion == sesion.id_sesion) # type: ignore
             ).one()
 
             inscritos = inscritos_resultado[0] if isinstance(inscritos_resultado, tuple) else inscritos_resultado
@@ -357,8 +378,8 @@ def obtener_sesiones_virtuales_por_profesional(
             local_fin = convert_utc_to_local(sesion.fin)
 
             resultado.append(SesionVirtualConDetalle(
-                id_sesion_virtual=sv.id_sesion_virtual,
-                id_sesion=sesion.id_sesion,
+                id_sesion_virtual=sv.id_sesion_virtual, # type: ignore
+                id_sesion=sesion.id_sesion, # type: ignore
                 fecha=local_inicio.date() if local_inicio else None,
                 hora_inicio=local_inicio.time() if local_inicio else None,
                 hora_fin=local_fin.time() if local_fin else None,
@@ -397,7 +418,7 @@ def obtener_detalle_sesion_virtual(id_sesion_virtual: int, db: Session) -> Detal
     local_fin = convert_utc_to_local(sesion.fin)
 
     return DetalleSesionVirtualResponse(
-        id_sesion_virtual=sv.id_sesion_virtual,
+        id_sesion_virtual=sv.id_sesion_virtual, # type: ignore
         descripcion=sesion.descripcion,
         fecha=local_inicio.date() if local_inicio else None,
         hora_inicio=local_inicio.time() if local_inicio else None,
@@ -418,17 +439,17 @@ def obtener_detalle_sesion_presencial(id_sesion_presencial: int, db: Session) ->
     sp, sesion, local = get_sesion_presencial_con_local(id_sesion_presencial, db)
 
     # Formatear local
-    local_out = formatear_local(local)
+    local_out = formatear_local(local) # type: ignore
 
     # Listar inscritos
-    inscritos_out = listar_inscritos_presencial(sp.id_sesion, db)
+    inscritos_out = listar_inscritos_presencial(sp.id_sesion, db) # type: ignore
 
     return DetalleSesionPresencialResponse(
-        id_sesion_presencial=sp.id_sesion_presencial,
-        descripcion=sesion.descripcion,
-        fecha=sesion.inicio.date() if sesion.inicio else None,
-        hora_inicio=sesion.inicio.time() if sesion.inicio else None,
-        hora_fin=sesion.fin.time() if sesion.fin else None,
+        id_sesion_presencial=sp.id_sesion_presencial, # type: ignore
+        descripcion=sesion.descripcion, # type: ignore
+        fecha=sesion.inicio.date() if sesion.inicio else None, # type: ignore
+        hora_inicio=sesion.inicio.time() if sesion.inicio else None, # type: ignore
+        hora_fin=sesion.fin.time() if sesion.fin else None, # type: ignore
         local=local_out,
         inscritos=inscritos_out
     )
@@ -451,7 +472,7 @@ def obtener_sesiones_presenciales_por_local(
 
         if sesion:
             inscritos_resultado = db.exec(
-                select(func.count(Reserva.id_reserva)).where(Reserva.id_sesion == sesion.id_sesion)
+                select(func.count(Reserva.id_reserva)).where(Reserva.id_sesion == sesion.id_sesion) # type: ignore
             ).one()
 
             inscritos = inscritos_resultado[0] if isinstance(inscritos_resultado, tuple) else inscritos_resultado
@@ -461,12 +482,12 @@ def obtener_sesiones_presenciales_por_local(
             local_fin = convert_utc_to_local(sesion.fin)
 
             resultado.append(SesionPresencialConDetalle(
-                id_sesion_presencial=sp.id_sesion_presencial,
-                id_sesion=sesion.id_sesion,
+                id_sesion_presencial=sp.id_sesion_presencial, # type: ignore
+                id_sesion=sesion.id_sesion, # type: ignore
                 fecha=local_inicio.date() if local_inicio else None,
                 hora_inicio=local_inicio.time() if local_inicio else None,
                 hora_fin=local_fin.time() if local_fin else None,
-                capacidad=sp.capacidad,                     # ✅ nuevo campo
+                capacidad=sp.capacidad,                     # ✅ nuevo campo # type: ignore
                 inscritos=inscritos
             ))
 
@@ -512,13 +533,13 @@ def listar_inscritos_de_sesion(id_sesion: int, db: Session) -> List[InscritoDeta
 
     for reserva in reservas:
         cliente = db.get(Cliente, reserva.id_cliente)
-        usuario = db.get(Usuario, cliente.id_usuario)
+        usuario = db.get(Usuario, cliente.id_usuario) # type: ignore
         comunidad = db.get(Comunidad, reserva.id_comunidad)
 
         inscritos.append(InscritoDetalleOut(
-            nombre=usuario.nombre,
-            apellido=usuario.apellido,
-            comunidad=comunidad.nombre,
+            nombre=usuario.nombre, # type: ignore
+            apellido=usuario.apellido, # type: ignore
+            comunidad=comunidad.nombre, # type: ignore
             entrego_archivo=bool(reserva.archivo)
         ))
 
@@ -533,13 +554,13 @@ def listar_inscritos_presencial(id_sesion: int, db: Session) -> List[InscritoPre
 
     for reserva in reservas:
         cliente = db.get(Cliente, reserva.id_cliente)
-        usuario = db.get(Usuario, cliente.id_usuario)
+        usuario = db.get(Usuario, cliente.id_usuario) # type: ignore
         comunidad = db.get(Comunidad, reserva.id_comunidad)
 
         inscritos.append(InscritoPresencialDetalleOut(
-            nombre=usuario.nombre,
-            apellido=usuario.apellido,
-            comunidad=comunidad.nombre
+            nombre=usuario.nombre, # type: ignore
+            apellido=usuario.apellido, # type: ignore
+            comunidad=comunidad.nombre # type: ignore
         ))
 
     return inscritos
@@ -566,3 +587,138 @@ def crear_local(
     db.commit()
     db.refresh(local)
     return local
+
+
+def procesar_archivo_sesiones_presenciales(
+    db: Session, archivo: UploadFile, id_servicio: int, creado_por: str
+):
+    df = pd.read_excel(BytesIO(archivo.file.read()), engine="openpyxl")
+    df = df.replace({np.nan: None})
+
+    resumen = {
+        "insertados": 0,
+        "errores": []
+    }
+
+    for idx, fila in df.iterrows():
+        try:
+            datos_dict = fila.to_dict()
+            datos_dict["id_servicio"] = id_servicio
+            
+            valor_capacidad = datos_dict.get("capacidad")
+
+            try:
+                if valor_capacidad is None or str(valor_capacidad).strip() == '':
+                    datos_dict["capacidad"] = None
+                else:
+                    datos_dict["capacidad"] = int(float(valor_capacidad))
+            except (ValueError, TypeError):
+                datos_dict["capacidad"] = None
+
+                
+            datos = SesionPresencialCargaMasiva.model_validate(datos_dict)
+            procesar_fila_sesion_presencial(
+                db=db,
+                datos=datos,
+                id_servicio=id_servicio,
+                creado_por=creado_por,
+                fila=idx + 2
+            )
+            resumen["insertados"] += 1
+        except Exception as e:
+            db.rollback()
+            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")
+
+    return resumen
+
+
+def procesar_fila_sesion_presencial(
+    db: Session,
+    datos: SesionPresencialCargaMasiva,
+    id_servicio: int,
+    creado_por: str,
+    fila: int
+):
+    ahora = datetime.now(timezone.utc)
+
+    # Validar que el local exista y esté vinculado al servicio
+    local = db.exec(
+        select(Local).where(
+            Local.id_local == datos.id_local,
+            Local.id_servicio == id_servicio
+        )
+    ).first()
+
+    if not local:
+        raise ValueError(f"Fila {fila}: El local con ID {datos.id_local} no está asociado al servicio con ID {id_servicio}.")
+    
+
+    if datos.fecha_inicio.tzinfo is None:
+        datos.fecha_inicio = datos.fecha_inicio.replace(tzinfo=timezone.utc)
+    if datos.fecha_fin.tzinfo is None:
+        datos.fecha_fin = datos.fecha_fin.replace(tzinfo=timezone.utc)
+    if datos.capacidad is None or datos.capacidad <= 0:
+        raise ValueError(f"Fila {fila}: La capacidad debe ser un número positivo.")
+    if datos.fecha_inicio < ahora:
+        raise ValueError(f"Fila {fila}: No se puede crear una sesión en el pasado.")
+    if datos.fecha_inicio >= datos.fecha_fin:
+        raise ValueError(f"Fila {fila}: La fecha de inicio debe ser anterior a la fecha de fin.")
+
+    servicio = db.get(Servicio, datos.id_servicio)
+    if not servicio or servicio.estado != 1:
+        raise ValueError(f"Fila {fila}: Servicio con ID {datos.id_servicio} no existe o está inactivo.")
+    if servicio.modalidad.lower() != "presencial":
+        raise ValueError(f"Fila {fila}: El servicio {datos.id_servicio} no es presencial.")
+
+    local = db.get(Local, datos.id_local)
+    if not local or local.estado != 1:
+        raise ValueError(f"Fila {fila}: Local con ID {datos.id_local} no existe o está inactivo.")
+    if local.id_servicio != datos.id_servicio:
+        raise ValueError(f"Fila {fila}: El local {datos.id_local} no está asignado al servicio {datos.id_servicio}.")
+
+    
+
+    validar_solapamiento_presencial(db, datos, fila)
+
+    nueva_sesion = Sesion(
+        id_servicio=datos.id_servicio,
+        tipo="Presencial",
+        descripcion=datos.descripcion or f"Sesión presencial de servicio {datos.id_servicio}",
+        inicio=datos.fecha_inicio,
+        fin=datos.fecha_fin,
+        creado_por=creado_por,
+        fecha_creacion=ahora,
+        estado=1
+    )
+    db.add(nueva_sesion)
+    db.flush()
+
+    nueva_presencial = SesionPresencial(
+        id_sesion=nueva_sesion.id_sesion,
+        id_local=datos.id_local,
+        capacidad=datos.capacidad,
+        creado_por=creado_por,
+        fecha_creacion=ahora,
+        estado=1
+    )
+    db.add(nueva_presencial)
+    db.commit()
+
+
+def validar_solapamiento_presencial(db: Session, datos: SesionPresencialCargaMasiva, fila: int):
+    conflicto = db.exec(
+        select(Sesion)
+        .join(SesionPresencial, Sesion.id_sesion == SesionPresencial.id_sesion)
+        .where(
+            Sesion.id_servicio == datos.id_servicio,
+            SesionPresencial.id_local == datos.id_local,
+            Sesion.inicio < datos.fecha_fin,
+            Sesion.fin > datos.fecha_inicio
+        )
+    ).first()
+
+    if conflicto:
+        raise ValueError(
+            f"Fila {fila}: Ya existe una sesión presencial para el servicio {datos.id_servicio} en el local {datos.id_local} "
+            f"que se cruza con el horario del {datos.fecha_inicio} al {datos.fecha_fin}."
+        )

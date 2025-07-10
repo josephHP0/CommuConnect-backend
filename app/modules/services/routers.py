@@ -23,6 +23,7 @@ from app.modules.services.services import procesar_archivo_locales
 from app.modules.services.services import obtener_detalle_sesion_presencial
 from app.modules.services.schemas import DetalleSesionVirtualResponse
 from app.modules.services.schemas import DetalleSesionPresencialResponse
+from app.modules.services.services import procesar_archivo_sesiones_presenciales
 
 
 router = APIRouter()
@@ -511,6 +512,45 @@ def crear_local_endpoint(
         servicio = db.get(Servicio, data.id_servicio)
         if not servicio:
             raise HTTPException(status_code=404, detail="Servicio no encontrado")
-        if getattr(servicio, "modalidad", None) != ModalidadServicio.presencial: # type: ignore
+        if getattr(servicio, "modalidad", None) != ModalidadServicio.Presencial: # type: ignore
             raise HTTPException(status_code=400, detail="Solo se pueden crear locales para servicios presenciales")
     return crear_local(db, data, creado_por=current_user.email)
+
+
+@router.post("/carga-masiva-sesiones-presenciales/{id_servicio}")
+def carga_masiva_sesiones_presenciales(
+    id_servicio: int,
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_session),
+    current_admin: Usuario = Depends(get_current_admin)
+):
+    try:
+        resultado = procesar_archivo_sesiones_presenciales(
+            db=db,
+            archivo=archivo,
+            id_servicio=id_servicio,
+            creado_por=current_admin.email
+        )
+    except Exception as e:
+        return {
+            "mensaje": "Error al procesar el archivo.",
+            "resumen": {
+                "insertados": 0,
+                "errores": [f"Error general: {str(e)}"]
+            }
+        }
+
+    # Usar una única lógica para el mensaje
+    if resultado["insertados"] > 0 and not resultado["errores"]:
+        mensaje = "Carga exitosa de sesiones presenciales."
+    elif resultado["insertados"] > 0 and resultado["errores"]:
+        mensaje = (
+            f"Se insertaron {resultado['insertados']} sesiones, pero algunas filas presentaron errores."
+        )
+    else:  # insertados == 0
+        mensaje = "No se insertó ninguna sesión. Todos los registros fallaron."
+
+    return {
+        "mensaje": mensaje,
+        "resumen": resultado
+    }

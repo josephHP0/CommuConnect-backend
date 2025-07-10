@@ -21,7 +21,7 @@ from datetime import timedelta
 from app.core.security import create_access_token, hash_password, decode_access_token
 from utils.email_brevo import send_reset_link_email, send_password_changed_email
 from jose import JWTError
-import os   
+import os
 import re
 import pytz
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -252,7 +252,7 @@ def construir_respuesta_contexto(
 
             # 🔹 Determinar el estado de membresía individualmente
             estado = tiene_membresia_activa(session, id_cliente, comunidad.id_comunidad) # type: ignore
-
+            
             comunidad_contexto = ComunidadContexto.from_orm_with_base64(
                 comunidad=comunidad,
                 servicios=servicios_resumen,
@@ -354,16 +354,33 @@ def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str)
         "errores": []
     }
 
+    # Expresión regular para validar email
+    email_regex = re.compile(r"^[\w\.-]+@[\w\.-]+\.\w+$")
+
     for idx, fila in df.iterrows():
         try:
+            fila_num = idx + 2  # +2 porque pandas empieza en 0 y la cabecera es la 1
+
             if pd.isna(fila['email']) or pd.isna(fila['num_doc']): # type: ignore
+                resumen["errores"].append(f"Fila {fila_num}: No se insertó porque el correo o número de documento está vacío.")
+                resumen["omitidos"] += 1
+                continue
+
+            # Validar formato de email
+            if not email_regex.match(str(fila['email'])):
+                resumen["errores"].append(f"Fila {fila_num}: No se insertó porque el formato del correo es inválido ({fila['email']}).")
                 resumen["omitidos"] += 1
                 continue
 
             # Verifica unicidad de email y num_doc
             existe_email = db.exec(select(Usuario).where(Usuario.email == fila['email'])).first()
             existe_doc = db.exec(select(Cliente).where(Cliente.num_doc == fila['num_doc'])).first()
-            if existe_email or existe_doc:
+            if existe_email:
+                resumen["errores"].append(f"Fila {fila_num}: No se insertó porque el correo ya existe en el sistema ({fila['email']}).")
+                resumen["omitidos"] += 1
+                continue
+            if existe_doc:
+                resumen["errores"].append(f"Fila {fila_num}: No se insertó porque el número de documento ya existe en el sistema ({fila['num_doc']}).")
                 resumen["omitidos"] += 1
                 continue
 
@@ -401,13 +418,14 @@ def procesar_archivo_clientes(db: Session, archivo: UploadFile, creado_por: str)
 
         except Exception as e:
             db.rollback()
-            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}") # type: ignore
+            resumen["errores"].append(f"Fila {fila_num}: No se insertó por error inesperado: {str(e)}")
 
     return resumen
 
 """sercies cambio de contraseña"""
 RESET_LINK_EXPIRATION_MINUTES = 5
-FRONTEND_RESET_URL = "http://localhost:4200/reset-password"
+FRONTEND_RESET_URL = "http://localhost:4200/autenticacion/reset-password"
+
 
 
 def solicitar_recuperacion_contrasena_con_link(db: Session, email: str, bg: BackgroundTasks) -> dict:

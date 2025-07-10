@@ -11,7 +11,7 @@ from datetime import datetime
 from app.core.enums import MetodoPago
 from .models import Inscripcion, Pago, Plan, DetalleInscripcion
 
-
+from sqlalchemy import and_
 
 def get_planes(session: Session):
     return session.exec(select(Plan)).all()
@@ -162,9 +162,11 @@ def pagar_pendiente(
 
 def obtener_inscripcion_activa(session: Session, id_cliente: int, id_comunidad: int) -> Inscripcion:
     query = select(Inscripcion).where(
-        Inscripcion.id_cliente == id_cliente,
-        Inscripcion.id_comunidad == id_comunidad,
-        Inscripcion.estado == 1  # Solo inscripciones activas
+        and_(
+            Inscripcion.id_cliente == id_cliente,
+            Inscripcion.id_comunidad == id_comunidad,
+            Inscripcion.estado == 1  # Solo inscripciones activas
+        )
     )
     inscripcion = session.exec(query).first()
 

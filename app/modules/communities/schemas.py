@@ -93,7 +93,7 @@ class ComunidadContexto(BaseModel):
             2: "pendiente de plan",
             3: "pendiente de pago"
         }
-        estado_nombre = "inactiva"
+        estado_nombre = "pendiente de pago"
         print("Estado de membresía recibido:", estado_membresia)
         if estado_membresia is not None:
             try:

@@ -11,7 +11,7 @@ from app.modules.reservations.services import (
     obtener_fechas_inicio_por_profesional, existe_reserva_para_usuario, obtener_resumen_reserva_presencial, 
     crear_reserva_presencial, listar_reservas_usuario_comunidad_semana, get_reservation_details, 
     cancelar_reserva_por_id, obtener_url_archivo_virtual, 
-    obtener_info_formulario, completar_formulario_virtual
+    obtener_info_formulario, completar_formulario_virtual,cancelar_reserva_virtual_por_id
 )
 from app.modules.reservations.schemas import (
     FechasPresencialesResponse, HorasPresencialesResponse, ListaSesionesPresencialesResponse, 
@@ -20,7 +20,8 @@ from app.modules.reservations.schemas import (
     ReservaCreate, ReservaPresencialCreadaResponse
 )
 from app.modules.auth.dependencies import get_current_user, get_current_cliente_id
-from app.modules.reservations.models import  SesionVirtual
+from app.modules.reservations.models import  SesionVirtual, Sesion
+from app.modules.services.models import  Servicio
 from app.modules.users.models import Usuario
 from fastapi import BackgroundTasks
 from app.modules.billing.services import obtener_inscripcion_activa, es_plan_con_topes
@@ -33,6 +34,7 @@ from app.modules.reservations.services import crear_reserva_virtual_con_validaci
 from app.modules.reservations.services import obtener_resumen_reserva_virtual
 from app.modules.reservations.schemas import ReservaVirtualSummary
 import traceback
+
 router = APIRouter()
 
 @router.get(
@@ -185,8 +187,6 @@ def verificar_reserva(
         print(f"Error al verificar reserva: {e}")
         raise HTTPException(status_code=500, detail="Error interno del servidor.")
 
-
-
 @router.post(
     "/virtual",
     response_model=ReservaResponse,
@@ -195,6 +195,7 @@ def verificar_reserva(
 )
 def create_reserva_virtual(
     reserva_in: ReservaCreate,
+    bg_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     cliente_id: int = Depends(get_current_cliente_id),
     usuario: Usuario = Depends(get_current_user)
@@ -210,14 +211,17 @@ def create_reserva_virtual(
             id_sesion=reserva_in.id_sesion,
             cliente_id=cliente_id,
             usuario_id=usuario.id_usuario,
-            id_comunidad=reserva_in.id_comunidad
+            id_comunidad=reserva_in.id_comunidad,
+            bg_tasks=bg_tasks
         )
-
         # 2. Confirmamos transacción
         session.commit()
 
         # 3. Obtenemos URL del recurso virtual si aplica
         url_archivo = obtener_url_archivo_virtual(session, reserva.id_sesion)
+
+        sesion = session.get(Sesion, reserva.id_sesion)
+        servicio = session.get(Servicio, sesion.id_servicio) if sesion else None
 
         # 4. Construimos respuesta para el frontend
         return ReservaResponse(
@@ -375,6 +379,18 @@ def cancel_reservation(
     result = cancelar_reserva_por_id(db=db, id_reserva=id_reserva, id_usuario=id_usuario)
     return result
 
+@router.patch("/{id_reserva}/cancel-virtual", status_code=200)
+def cancel_virtual_reservation(
+    id_reserva: int = FastPath(..., title="ID de la Reserva virtual a cancelar", ge=1),
+    db: Session = Depends(get_session),
+    current_user: Usuario = Depends(get_current_user)
+):
+    """
+    Cancela una reserva virtual, si aún no ha iniciado.
+    """
+    id_usuario = current_user.id_usuario
+    return cancelar_reserva_virtual_por_id(db=db, id_reserva=id_reserva, id_usuario=id_usuario)
+
 @router.get("/formulario/{id_sesion}", response_model=FormularioInfoResponse)
 def get_info_formulario(
     id_sesion: int,
@@ -431,7 +447,6 @@ async def enviar_formulario(
         cliente_nombre=cliente_nombre
     )
 
-
 @router.post("/carga-masiva")
 def carga_masiva_sesiones_virtuales(
     archivo: UploadFile = File(...),
@@ -440,33 +455,17 @@ def carga_masiva_sesiones_virtuales(
 ):
     try:
         resultado = procesar_archivo_sesiones_virtuales(db, archivo, current_admin.email)
-        return {
-            "mensaje": "Carga masiva de sesiones virtuales completada correctamente.",
-            "resumen": resultado
-        }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en carga masiva: {str(e)}")
-@router.get(
-    "/virtual/summary/reserva/{id_reserva}",
-    response_model=ReservaVirtualSummary,
-    summary="Obtiene el resumen de una reserva virtual específica para el usuario actual",
-)
-def get_resumen_reserva_virtual(
-    *,
-    id_reserva: int,
-    session: Session = Depends(get_session),
-    current_user: Usuario = Depends(get_current_user),
-):
-    resumen, error = obtener_resumen_reserva_virtual(
-        db=session,
-        id_reserva=id_reserva,
-        id_usuario=current_user.id_usuario,
-    )
+        resultado = {
+            "insertados": 0,
+            "errores": [f"Error general: {str(e)}"]
+        }
 
-    if error:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error)
+    return {
+        "mensaje": "Carga masiva de sesiones virtuales completada (con errores)" if resultado["errores"] else "Carga exitosa.",
+        "resumen": resultado
+    }
 
-    return resumen
 
 @router.get(
     "/virtual/summary/reserva/{id_reserva}",
@@ -489,3 +488,5 @@ def get_resumen_reserva_virtual(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error)
 
     return resumen
+
+
