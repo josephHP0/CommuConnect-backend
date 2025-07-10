@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any
 from fastapi import HTTPException
 from sqlmodel import Session, select
 from sqlalchemy import text
+from utils.datetime_utils import convert_utc_to_local
 
 from app.modules.communities.models import ClienteXComunidad, Comunidad, ComunidadXPlan
 from .schemas import ComunidadXPlanCreate, DetalleInscripcionCreate, PlanCreate, PlanUpdate
@@ -542,20 +543,25 @@ def calcular_estado_suspension(suspension) -> Dict[str, Any]:
 def obtener_detalles_suspension_completos(suspension):
     """
     Obtiene los detalles completos de una suspensión incluyendo estado calculado
+    ✅ CORREGIDO: Convierte fechas UTC a hora local de Lima para mostrar al usuario
     """
     estado_info = calcular_estado_suspension(suspension)
+    
+    # ✅ Convertir fechas UTC a hora local de Lima para mostrar al usuario
+    fecha_creacion_lima = convert_utc_to_local(suspension.fecha_creacion) if suspension.fecha_creacion else None
+    fecha_modificacion_lima = convert_utc_to_local(suspension.fecha_modificacion) if suspension.fecha_modificacion else None
     
     return {
         "id_suspension": suspension.id_suspension,
         "id_cliente": suspension.id_cliente,
         "id_inscripcion": suspension.id_inscripcion,
         "motivo": suspension.motivo,
-        "fecha_inicio": suspension.fecha_inicio,
-        "fecha_fin": suspension.fecha_fin,
+        "fecha_inicio": suspension.fecha_inicio,        # Ya está en Lima local
+        "fecha_fin": suspension.fecha_fin,              # Ya está en Lima local
         "archivo": suspension.archivo,
-        "fecha_creacion": suspension.fecha_creacion,
+        "fecha_creacion": fecha_creacion_lima,          # ✅ Convertida de UTC a Lima
         "creado_por": suspension.creado_por,
-        "fecha_modificacion": suspension.fecha_modificacion,
+        "fecha_modificacion": fecha_modificacion_lima,  # ✅ Convertida de UTC a Lima
         "modificado_por": suspension.modificado_por,
         "estado_bd": suspension.estado,
         "estado_visual": estado_info["estado_visual"],
