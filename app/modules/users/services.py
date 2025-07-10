@@ -164,7 +164,7 @@ def obtener_comunidades_del_cliente(session: Session, id_cliente: int) -> List[C
 
 
 def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int) -> int:
-    from datetime import datetime
+    # ✅ ELIMINAR import local conflictivo - usar el import global
     
     inscripcion = session.exec(
         select(Inscripcion)
@@ -182,7 +182,7 @@ def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int)
     if inscripcion.estado == 0:  # Congelado
         from app.modules.billing.models import Suspension
         
-        # 🔄 Usar zona horaria de Lima para comparaciones consistentes con las fechas de suspensión
+        # ✅ USAR la misma lógica de datetime que en calcular_estado_suspension
         lima_tz = pytz.timezone("America/Lima")
         ahora = datetime.now(lima_tz).replace(tzinfo=None)  # Convertir a naive datetime para comparar
         
@@ -213,9 +213,12 @@ def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int)
     # Si la inscripción está activa, verificar si hay suspensión vigente
     from app.modules.billing.models import Suspension
     
-    # 🔄 Usar zona horaria de Lima para comparaciones consistentes con las fechas de suspensión
+    # ✅ USAR la misma lógica de datetime que en calcular_estado_suspension
     lima_tz = pytz.timezone("America/Lima")
     ahora = datetime.now(lima_tz).replace(tzinfo=None)  # Convertir a naive datetime para comparar
+    
+    # 🔍 DEBUG: Agregar logs para verificar fechas
+    print(f"🕐 [DEBUG] Verificando suspensión - Fecha actual Lima: {ahora}")
     
     suspension_activa = session.exec(
         select(Suspension)
@@ -228,6 +231,7 @@ def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int)
     ).first()
     
     if suspension_activa:
+        print(f"🔍 [DEBUG] Suspensión encontrada - Inicio: {suspension_activa.fecha_inicio}, Fin: {suspension_activa.fecha_fin}")
         # Hay una suspensión activa, retornar estado especial
         return 2  # 2 = Suspendida (puedes usar el código que prefieras)
     

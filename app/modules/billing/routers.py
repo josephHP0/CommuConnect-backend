@@ -442,14 +442,28 @@ def aceptar_suspension(
     suspension.fecha_modificacion = datetime.utcnow()
     session.add(suspension)
 
-    # Cambia el estado de la inscripción a 0 (congelado)
+    # ✅ LÓGICA CORREGIDA: Solo congelar si la suspensión debería estar activa HOY
+    import pytz
+    lima_tz = pytz.timezone("America/Lima")
+    ahora = datetime.now(lima_tz).replace(tzinfo=None)
+    
+    # Obtener la inscripción (necesaria para el correo posteriormente)
     inscripcion = session.get(Inscripcion, suspension.id_inscripcion)
     if not inscripcion:
         raise HTTPException(status_code=404, detail="Inscripción no encontrada")
-    inscripcion.estado = 0
-    inscripcion.modificado_por = current_user.email
-    inscripcion.fecha_modificacion = datetime.utcnow()
-    session.add(inscripcion)
+    
+    # Verificar si la suspensión debería estar activa ahora mismo
+    if suspension.fecha_inicio <= ahora <= suspension.fecha_fin:
+        # Solo congelar si la suspensión está activa HOY
+        inscripcion.estado = 0  # Congelado
+        inscripcion.modificado_por = current_user.email
+        inscripcion.fecha_modificacion = datetime.utcnow()
+        session.add(inscripcion)
+        print(f"🔄 Membresía congelada inmediatamente - suspensión activa HOY")
+    else:
+        print(f"🔄 Suspensión aceptada pero NO congelada - empieza el {suspension.fecha_inicio}")
+        # La membresía seguirá activa hasta que llegue la fecha_inicio
+        # El sistema la congelará automáticamente mediante tiene_membresia_activa()
 
     session.commit()
 
@@ -472,7 +486,13 @@ def aceptar_suspension(
         except Exception as e:
             print("Error enviando correo:", e)
 
-    return {"ok": True, "message": "Suspensión aceptada y membresía congelada exitosamente", "id_suspension": suspension.id_suspension}
+    # Mensaje dinámico dependiendo de si se congeló o no
+    if suspension.fecha_inicio <= ahora <= suspension.fecha_fin:
+        mensaje = "Suspensión aceptada y membresía congelada exitosamente"
+    else:
+        mensaje = f"Suspensión aceptada. La membresía se congelará automáticamente el {suspension.fecha_inicio.strftime('%d/%m/%Y')}"
+    
+    return {"ok": True, "message": mensaje, "id_suspension": suspension.id_suspension}
 
 # Endpoint para rechazar una suspensión de membresía desde el administrador
 @router.post("/suspension/{id_suspension}/rechazar")
