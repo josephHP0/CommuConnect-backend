@@ -17,7 +17,7 @@ from app.modules.communities.models import Comunidad
 from io import BytesIO
 import numpy as np
 from app.modules.reservations.schemas import SesionPresencialCargaMasiva
-from utils.datetime_utils import convert_utc_to_local  # ✅ AGREGADO: Importación para conversión de zonas horarias
+from utils.datetime_utils import convert_utc_to_local, convert_local_to_utc  # ✅ AGREGADO: Importación para conversión de zonas horarias
 
 
 def obtener_servicios_por_ids(session: Session, servicio_ids: List[int]):
@@ -444,12 +444,16 @@ def obtener_detalle_sesion_presencial(id_sesion_presencial: int, db: Session) ->
     # Listar inscritos
     inscritos_out = listar_inscritos_presencial(sp.id_sesion, db) # type: ignore
 
+    # ✅ CORREGIDO: Convertir UTC a hora local de Lima para mostrar al usuario
+    local_inicio = convert_utc_to_local(sesion.inicio) # type: ignore
+    local_fin = convert_utc_to_local(sesion.fin) # type: ignore
+
     return DetalleSesionPresencialResponse(
         id_sesion_presencial=sp.id_sesion_presencial, # type: ignore
         descripcion=sesion.descripcion, # type: ignore
-        fecha=sesion.inicio.date() if sesion.inicio else None, # type: ignore
-        hora_inicio=sesion.inicio.time() if sesion.inicio else None, # type: ignore
-        hora_fin=sesion.fin.time() if sesion.fin else None, # type: ignore
+        fecha=local_inicio.date() if local_inicio else None,
+        hora_inicio=local_inicio.time() if local_inicio else None,
+        hora_fin=local_fin.time() if local_fin else None,
         local=local_out,
         inscritos=inscritos_out
     )
@@ -653,10 +657,11 @@ def procesar_fila_sesion_presencial(
         raise ValueError(f"Fila {fila}: El local con ID {datos.id_local} no está asociado al servicio con ID {id_servicio}.")
     
 
+    # ✅ CORREGIDO: Convertir fechas locales (Lima) a UTC para almacenamiento
     if datos.fecha_inicio.tzinfo is None:
-        datos.fecha_inicio = datos.fecha_inicio.replace(tzinfo=timezone.utc)
+        datos.fecha_inicio = convert_local_to_utc(datos.fecha_inicio)
     if datos.fecha_fin.tzinfo is None:
-        datos.fecha_fin = datos.fecha_fin.replace(tzinfo=timezone.utc)
+        datos.fecha_fin = convert_local_to_utc(datos.fecha_fin)
     if datos.capacidad is None or datos.capacidad <= 0:
         raise ValueError(f"Fila {fila}: La capacidad debe ser un número positivo.")
     if datos.fecha_inicio < ahora:

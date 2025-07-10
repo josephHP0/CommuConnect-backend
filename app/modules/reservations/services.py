@@ -1265,11 +1265,11 @@ def procesar_archivo_sesiones_virtuales(db: Session, archivo, creado_por: str):
 def procesar_fila_sesion_virtual(datos: SesionCargaMasiva, db: Session, creado_por: str):
     ahora = datetime.now(timezone.utc)
 
-    # ✅ Normalizar fechas para evitar errores de comparación
+    # ✅ CORREGIDO: Convertir fechas locales (Lima) a UTC para almacenamiento
     if datos.fecha_inicio.tzinfo is None:
-        datos.fecha_inicio = datos.fecha_inicio.replace(tzinfo=timezone.utc)
+        datos.fecha_inicio = convert_local_to_utc(datos.fecha_inicio)
     if datos.fecha_fin.tzinfo is None:
-        datos.fecha_fin = datos.fecha_fin.replace(tzinfo=timezone.utc)
+        datos.fecha_fin = convert_local_to_utc(datos.fecha_fin)
         
     if datos.fecha_inicio < ahora:
         raise ValueError(
