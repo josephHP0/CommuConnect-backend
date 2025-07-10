@@ -41,6 +41,13 @@ def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_co
     if not cliente:
         return []
 
+    # ✅ CORREGIDO: Convertir fechas locales a rangos UTC para filtrar correctamente
+    start_of_period_local = datetime.combine(fecha, time.min)
+    end_of_period_local = datetime.combine(end_date, time.min)
+    
+    start_of_period_utc = convert_local_to_utc(start_of_period_local)
+    end_of_period_utc = convert_local_to_utc(end_of_period_local)
+
     stmt = (
         select(
             Reserva.id_reserva,
@@ -54,8 +61,8 @@ def listar_reservas_usuario_comunidad_semana(db: Session, id_usuario: int, id_co
         .where(Reserva.id_cliente == cliente.id_cliente)
         .where(ComunidadXServicio.id_comunidad == id_comunidad)
         .where(ComunidadXServicio.estado == 1)
-        .where(func.date(Sesion.inicio) >= fecha)
-        .where(func.date(Sesion.inicio) < end_date)
+        .where(Sesion.inicio >= start_of_period_utc)  # ✅ CORREGIDO: Filtrar con rango UTC
+        .where(Sesion.inicio < end_of_period_utc)     # ✅ CORREGIDO: Filtrar con rango UTC
         .where(Reserva.estado_reserva.in_(['confirmada', 'formulario_pendiente']))
     )
     
@@ -72,6 +79,9 @@ def obtener_fechas_presenciales(
     Ejecuta la consulta a la base de datos y devuelve
     una lista de fechas (date) sin repetición, donde
     hay sesiones "Presencial" filtradas por servicio, distrito y local.
+    
+    ✅ CORREGIDO: Convierte UTC a hora local ANTES de extraer la fecha
+    para evitar que sesiones nocturnas aparezcan con fecha del día siguiente.
     """
     local_obj = session.get(Local, id_local)
     if not local_obj or local_obj.id_distrito != id_distrito:
@@ -81,9 +91,9 @@ def obtener_fechas_presenciales(
     if not local_obj or local_obj.id_distrito != id_distrito:
         return []  # o podrías lanzar una excepción custom aquí
 
-    # 2) Construir la consulta
+    # 2) Construir la consulta - OBTENER DATETIME COMPLETO para conversión
     stmt = (
-        select(func.date(Sesion.inicio).label("solo_fecha"))
+        select(Sesion.inicio)  # ✅ CORREGIDO: Obtener datetime completo UTC
         .join(SesionPresencial, SesionPresencial.id_sesion == Sesion.id_sesion)
         .join(Local, Local.id_local == SesionPresencial.id_local)
         .where(
@@ -96,8 +106,16 @@ def obtener_fechas_presenciales(
     )
 
     raw_results = session.exec(stmt).all()
-    fechas = [(row[0] if isinstance(row, tuple) else row) for row in raw_results]
-    fechas.sort()
+    
+    # 3) ✅ CORREGIDO: Convertir UTC a hora local y extraer fechas únicas
+    fechas_locales = set()
+    for dt_utc in raw_results:
+        if dt_utc:
+            local_dt = convert_utc_to_local(dt_utc)
+            if local_dt:
+                fechas_locales.add(local_dt.date())
+    
+    fechas = sorted(list(fechas_locales))
     return fechas
 
 def obtener_horas_presenciales(
@@ -669,7 +687,7 @@ def obtener_resumen_reserva_presencial(db: Session, id_sesion: int, id_usuario: 
         select(
             Sesion.id_sesion,
             SesionPresencial.id_sesion_presencial,
-            func.date(Sesion.inicio).label("fecha"),
+            # ✅ CORREGIDO: Eliminado func.date() para hacer conversión manual después
             Sesion.inicio.label("dt_inicio"),
             Sesion.fin.label("dt_fin"),
             SesionPresencial.creado_por.label("responsable"),
@@ -687,20 +705,19 @@ def obtener_resumen_reserva_presencial(db: Session, id_sesion: int, id_usuario: 
         return None, "Sesión no encontrada"
     
     (
-        id_ses, id_ses_pres, fecha_sesion,
+        id_ses, id_ses_pres,
         dt_inicio, dt_fin,
         responsable, vac_tot, ubicacion
     ) = sesion_data
 
-    # --- INICIO DEL CAMBIO ---
+    # ✅ CORREGIDO: Convertir UTC a hora local de Lima para extraer fecha correcta
     local_inicio = convert_utc_to_local(dt_inicio)
     local_fin = convert_utc_to_local(dt_fin)
-    # --- FIN DEL CAMBIO ---
 
     resumen = {
         "id_sesion": id_ses,
         "id_sesion_presencial": id_ses_pres,
-        "fecha": local_inicio.date() if local_inicio else fecha_sesion,
+        "fecha": local_inicio.date() if local_inicio else None,  # ✅ CORREGIDO: Usar fecha local
         "ubicacion": ubicacion,
         "responsable": responsable,
         "hora_inicio": local_inicio.strftime("%H:%M") if local_inicio else "N/A",
@@ -856,11 +873,15 @@ def obtener_resumen_sesion_presencial(db: Session, id_sesion: int):
         vacantes_disponibles
     ) = result
     
+    # ✅ CORREGIDO: Convertir UTC a hora local de Lima para mostrar al usuario
+    local_inicio = convert_utc_to_local(inicio)
+    local_fin = convert_utc_to_local(fin)
+    
     summary = {
         "nombre_servicio": nombre_servicio,
-        "fecha": inicio.strftime("%d/%m/%Y"),
-        "hora_inicio": inicio.strftime("%H:%M"),
-        "hora_fin": fin.strftime("%H:%M"),
+        "fecha": local_inicio.strftime("%d/%m/%Y") if local_inicio else "N/A",
+        "hora_inicio": local_inicio.strftime("%H:%M") if local_inicio else "N/A",
+        "hora_fin": local_fin.strftime("%H:%M") if local_fin else "N/A",
         "ubicacion": nombre_local,
         "direccion": direccion_local,
         "responsable": nombre_responsable,
@@ -964,11 +985,15 @@ def obtener_info_formulario(db: Session, id_sesion: int, cliente_id: int):
         raise HTTPException(status_code=404, detail="Profesional no encontrado.")
 
     # 3. Construir la respuesta
+    # ✅ CORREGIDO: Convertir UTC a hora local de Lima para mostrar al usuario
+    local_inicio = convert_utc_to_local(sesion_virtual.sesion.inicio)
+    local_fin = convert_utc_to_local(sesion_virtual.sesion.fin)
+    
     return {
         "profesional_nombre": profesional.nombre_completo,
-        "fecha_sesion": sesion_virtual.sesion.inicio.date(),
-        "hora_inicio": sesion_virtual.sesion.inicio.time(),
-        "hora_fin": sesion_virtual.sesion.fin.time(),
+        "fecha_sesion": local_inicio.date() if local_inicio else None,
+        "hora_inicio": local_inicio.time() if local_inicio else None,
+        "hora_fin": local_fin.time() if local_fin else None,
         "url_formulario": sesion_virtual.url_archivo,
         "formulario_completado": reserva.archivo is not None
     }
