@@ -15,6 +15,7 @@ from .schemas import DetalleSesionVirtualResponse, LocalCreate, ProfesionalDetal
 from app.modules.users.models import Cliente, Usuario
 from app.modules.communities.models import Comunidad
 from io import BytesIO
+from utils.datetime_utils import convert_utc_to_local  # ✅ AGREGADO: Importación para conversión de zonas horarias
 
 
 def obtener_servicios_por_ids(session: Session, servicio_ids: List[int]):
@@ -250,6 +251,86 @@ def procesar_archivo_profesionales(db: Session, archivo: UploadFile, creado_por:
     return resumen
 
 
+def procesar_archivo_locales(db: Session, archivo: UploadFile, id_servicio: int, creado_por: str):
+    """
+    Procesa un archivo Excel para cargar locales masivamente a un servicio específico.
+    
+    Estructura esperada del Excel (en este orden):
+    - nombre: Nombre del local (obligatorio)
+    - id_distrito: ID del distrito (obligatorio)
+    - direccion_detallada: Dirección completa del local (obligatorio)
+    - responsable: Persona responsable del local (opcional)
+    - link: URL o enlace relacionado (opcional)
+    
+    Nota: El departamento se asigna automáticamente como 14 (por defecto)
+    """
+    df = pd.read_excel(BytesIO(archivo.file.read()), engine="openpyxl")
+
+    resumen = {
+        "insertados": 0,
+        "omitidos": 0,
+        "errores": []
+    }
+
+    # Verificar que el servicio existe
+    servicio = db.get(Servicio, id_servicio)
+    if not servicio:
+        raise HTTPException(status_code=404, detail="Servicio no encontrado")
+
+    for idx, fila in df.iterrows():
+        try:
+            # Validar campos obligatorios
+            if pd.isna(fila['nombre']) or pd.isna(fila['id_distrito']) or pd.isna(fila['direccion_detallada']) or fila['direccion_detallada'] == '':
+                resumen["omitidos"] += 1
+                continue
+
+            # Verificar si ya existe un local con el mismo nombre para este servicio
+            existe_local = db.exec(
+                select(Local).where(
+                    Local.nombre == fila['nombre'],
+                    Local.id_servicio == id_servicio
+                )
+            ).first()
+            
+            if existe_local:
+                resumen["omitidos"] += 1
+                continue
+
+            # Manejar campos opcionales
+            responsable_valor = None
+            if not pd.isna(fila.get('responsable')) and fila.get('responsable') != '':
+                responsable_valor = fila['responsable']
+            
+            link_valor = None
+            if not pd.isna(fila.get('link')) and fila.get('link') != '':
+                link_valor = fila['link']
+
+            # Crear nuevo local
+            nuevo_local = Local(
+                nombre=fila['nombre'],  # type: ignore
+                direccion_detallada=fila['direccion_detallada'],  # type: ignore (ahora obligatorio)
+                responsable=responsable_valor,
+                link=link_valor,
+                id_departamento=14,  # Departamento por defecto
+                id_distrito=int(fila['id_distrito']),  # type: ignore
+                id_servicio=id_servicio,
+                fecha_creacion=datetime.utcnow(),
+                creado_por=creado_por,
+                estado=1
+            )
+            
+            db.add(nuevo_local)
+            db.commit()
+            db.refresh(nuevo_local)
+
+            resumen["insertados"] += 1
+
+        except Exception as e:
+            db.rollback()
+            resumen["errores"].append(f"Fila {idx + 2}: {str(e)}")  # type: ignore
+
+    return resumen
+
 def obtener_sesiones_virtuales_por_profesional(
     db: Session, id_profesional: int
 ) -> List[SesionVirtualConDetalle]:
@@ -271,12 +352,16 @@ def obtener_sesiones_virtuales_por_profesional(
 
             inscritos = inscritos_resultado[0] if isinstance(inscritos_resultado, tuple) else inscritos_resultado
 
+            # ✅ CORREGIDO: Convertir UTC a hora local de Lima para mostrar al usuario
+            local_inicio = convert_utc_to_local(sesion.inicio)
+            local_fin = convert_utc_to_local(sesion.fin)
+
             resultado.append(SesionVirtualConDetalle(
                 id_sesion_virtual=sv.id_sesion_virtual,
                 id_sesion=sesion.id_sesion,
-                fecha=sesion.inicio.date() if sesion.inicio else None,
-                hora_inicio=sesion.inicio.time() if sesion.inicio else None,
-                hora_fin=sesion.fin.time() if sesion.fin else None,
+                fecha=local_inicio.date() if local_inicio else None,
+                hora_inicio=local_inicio.time() if local_inicio else None,
+                hora_fin=local_fin.time() if local_fin else None,
                 inscritos=inscritos
             ))
 
@@ -307,12 +392,16 @@ def obtener_detalle_sesion_virtual(id_sesion_virtual: int, db: Session) -> Detal
     profesional_out = formatear_profesional(profesional)
     inscritos_out = listar_inscritos_de_sesion(sv.id_sesion, db)
 
+    # ✅ CORREGIDO: Convertir UTC a hora local de Lima para mostrar al usuario
+    local_inicio = convert_utc_to_local(sesion.inicio)
+    local_fin = convert_utc_to_local(sesion.fin)
+
     return DetalleSesionVirtualResponse(
         id_sesion_virtual=sv.id_sesion_virtual,
         descripcion=sesion.descripcion,
-        fecha=sesion.inicio.date() if sesion.inicio else None,
-        hora_inicio=sesion.inicio.time() if sesion.inicio else None,
-        hora_fin=sesion.fin.time() if sesion.fin else None,
+        fecha=local_inicio.date() if local_inicio else None,
+        hora_inicio=local_inicio.time() if local_inicio else None,
+        hora_fin=local_fin.time() if local_fin else None,
         profesional=profesional_out,
         inscritos=inscritos_out
     )
@@ -367,12 +456,16 @@ def obtener_sesiones_presenciales_por_local(
 
             inscritos = inscritos_resultado[0] if isinstance(inscritos_resultado, tuple) else inscritos_resultado
 
+            # ✅ CORREGIDO: Convertir UTC a hora local de Lima para mostrar al usuario
+            local_inicio = convert_utc_to_local(sesion.inicio)
+            local_fin = convert_utc_to_local(sesion.fin)
+
             resultado.append(SesionPresencialConDetalle(
                 id_sesion_presencial=sp.id_sesion_presencial,
                 id_sesion=sesion.id_sesion,
-                fecha=sesion.inicio.date() if sesion.inicio else None,
-                hora_inicio=sesion.inicio.time() if sesion.inicio else None,
-                hora_fin=sesion.fin.time() if sesion.fin else None,
+                fecha=local_inicio.date() if local_inicio else None,
+                hora_inicio=local_inicio.time() if local_inicio else None,
+                hora_fin=local_fin.time() if local_fin else None,
                 capacidad=sp.capacidad,                     # ✅ nuevo campo
                 inscritos=inscritos
             ))

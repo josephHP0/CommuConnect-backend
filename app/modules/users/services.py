@@ -21,7 +21,9 @@ from datetime import timedelta
 from app.core.security import create_access_token, hash_password, decode_access_token
 from utils.email_brevo import send_reset_link_email, send_password_changed_email
 from jose import JWTError
-
+import os   
+import re
+import pytz
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def crear_usuario(db: Session, usuario: UsuarioCreate):
@@ -179,7 +181,10 @@ def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int)
     # 🔥 NUEVA LÓGICA: Reactivar automáticamente si hay suspensión expirada
     if inscripcion.estado == 0:  # Congelado
         from app.modules.billing.models import Suspension
-        ahora = datetime.now()
+        
+        # 🔄 Usar zona horaria de Lima para comparaciones consistentes con las fechas de suspensión
+        lima_tz = pytz.timezone("America/Lima")
+        ahora = datetime.now(lima_tz).replace(tzinfo=None)  # Convertir a naive datetime para comparar
         
         # Buscar suspensión expirada (aceptada pero ya terminó)
         suspension_expirada = session.exec(
@@ -207,7 +212,10 @@ def tiene_membresia_activa(session: Session, id_cliente: int, id_comunidad: int)
     
     # Si la inscripción está activa, verificar si hay suspensión vigente
     from app.modules.billing.models import Suspension
-    ahora = datetime.now()
+    
+    # 🔄 Usar zona horaria de Lima para comparaciones consistentes con las fechas de suspensión
+    lima_tz = pytz.timezone("America/Lima")
+    ahora = datetime.now(lima_tz).replace(tzinfo=None)  # Convertir a naive datetime para comparar
     
     suspension_activa = session.exec(
         select(Suspension)

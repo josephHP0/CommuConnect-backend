@@ -409,7 +409,11 @@ def calcular_estado_suspension(suspension) -> Dict[str, Any]:
     Returns:
         Dict con estado_visual, color, y acciones_disponibles
     """
-    ahora = datetime.now()
+    import pytz
+    
+    # 🔄 Usar zona horaria de Lima para comparaciones consistentes
+    lima_tz = pytz.timezone("America/Lima")
+    ahora = datetime.now(lima_tz).replace(tzinfo=None)  # Convertir a naive datetime para comparar
     
     estado_bd = suspension.estado
     fecha_inicio = suspension.fecha_inicio

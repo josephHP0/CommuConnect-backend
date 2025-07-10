@@ -19,6 +19,7 @@ from ..services.services import crear_local, procesar_archivo_profesionales
 from app.modules.services.services import obtener_sesiones_virtuales_por_profesional, obtener_sesiones_presenciales_por_local
 from app.modules.services.schemas import SesionVirtualConDetalle,SesionPresencialConDetalle
 from app.modules.services.services import obtener_detalle_sesion_virtual
+from app.modules.services.services import procesar_archivo_locales
 from app.modules.services.services import obtener_detalle_sesion_presencial
 from app.modules.services.schemas import DetalleSesionVirtualResponse
 from app.modules.services.schemas import DetalleSesionPresencialResponse
@@ -170,7 +171,68 @@ def obtener_locales_por_servicio(id_servicio: int, db: Session = Depends(get_ses
         raise HTTPException(status_code=404, detail="No se encontraron locales para este servicio")
     return locales
 
-
+@router.post("/locales/carga-masiva/{id_servicio}")
+def carga_masiva_locales(
+    id_servicio: int,
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_session),
+    current_admin: Usuario = Depends(get_current_admin)
+):
+    """
+    Endpoint para cargar locales masivamente a un servicio específico a través de un archivo Excel.
+    
+    **IMPORTANTE: Este endpoint es solo para ADMINISTRADORES**
+    
+    **Estructura del archivo Excel requerida (en este orden):**
+    1. **nombre** - Nombre del local (OBLIGATORIO)
+    2. **id_distrito** - ID del distrito (OBLIGATORIO)
+    3. **direccion_detallada** - Dirección completa del local (OBLIGATORIO)
+    4. **responsable** - Persona responsable del local (OPCIONAL)
+    5. **link** - URL o enlace relacionado (OPCIONAL)
+    
+    **Notas importantes:**
+    - El archivo debe ser .xlsx o .xls
+    - La primera fila debe contener los nombres de las columnas exactamente como se especifica
+    - El departamento se asigna automáticamente como 14 (por defecto)
+    - Se valida que el servicio exista antes de procesar
+    - Se evitan duplicados por nombre de local en el mismo servicio
+    
+    **Ejemplo de estructura:**
+    ```
+    nombre           | id_distrito | direccion_detallada    | responsable | link
+    Gimnasio Central | 1          | Av. Principal 123      | Juan Pérez  | 
+    Sala Yoga       | 2          | Calle Secundaria 456   |             | http://example.com
+    ```
+    
+    **Respuesta:**
+    - insertados: número de locales creados exitosamente
+    - omitidos: número de filas omitidas por campos vacíos o duplicados
+    - errores: lista de errores específicos por fila
+    """
+    try:
+        # Validar que el archivo sea Excel
+        if not archivo.filename or not archivo.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(
+                status_code=400, 
+                detail="El archivo debe ser un Excel (.xlsx o .xls)"
+            )
+        
+        resultado = procesar_archivo_locales(
+            db=db, 
+            archivo=archivo, 
+            id_servicio=id_servicio, 
+            creado_por=current_admin.email
+        )
+        
+        return {
+            "mensaje": "Carga masiva de locales completada",
+            "id_servicio": id_servicio,
+            "resumen": resultado
+        }
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al procesar archivo: {str(e)}")
 
 
 

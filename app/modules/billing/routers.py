@@ -403,12 +403,14 @@ def solicitar_congelamiento_membresia(
     current_user=Depends(get_current_user),
     current_cliente_id: int = Depends(get_current_cliente_id),
 ):
+    # 🔄 Las fechas se interpretan como zona horaria de Lima (Peru)
+    # Se almacenan como naive datetime pero las comparaciones se hacen en Lima timezone
     suspension = Suspension(
         id_cliente=current_cliente_id,
         id_inscripcion=id_inscripcion,
         motivo=motivo or "",
-        fecha_inicio=datetime.combine(fecha_inicio, datetime.min.time()),
-        fecha_fin=datetime.combine(fecha_fin, datetime.min.time()),
+        fecha_inicio=datetime.combine(fecha_inicio, datetime.min.time()),  # 00:00:00 Lima
+        fecha_fin=datetime.combine(fecha_fin, datetime.min.time()),        # 00:00:00 Lima  
         archivo= archivo,
         fecha_creacion=datetime.utcnow(),
         creado_por=current_user.email,
